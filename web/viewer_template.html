@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>QMini gait reference viewer</title>
+<style>
+ :root{--bg:#12141a;--panel:#1a1d26;--line:#2a2f3d;--txt:#d7dbe4;--dim:#828a9c;
+       --acc:#6ea8fe;--l:#e0655f;--r:#5b8ff9;--warn:#e0a458}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--txt);overflow:hidden;
+      font:13px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+ #wrap{display:flex;height:100vh}
+ #left{flex:1;display:flex;flex-direction:column;min-width:0}
+ #view{flex:1;position:relative;min-height:0;cursor:grab}
+ #view.drag{cursor:grabbing}
+ #gl,#c{position:absolute;inset:0;width:100%;height:100%;display:block}
+ #c{pointer-events:none}
+ #side{width:302px;background:var(--panel);border-left:1px solid var(--line);
+       overflow-y:auto;padding:14px}
+ h1{font-size:14px;margin:0 0 2px;font-weight:600}
+ .sub{color:var(--dim);font-size:11px;margin-bottom:14px}
+ h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
+    margin:16px 0 7px;font-weight:600}
+ .clips{display:grid;gap:3px}
+ .clip{padding:6px 9px;border-radius:5px;background:#222634;border:1px solid transparent;
+       cursor:pointer;display:flex;justify-content:space-between;gap:8px;font-size:12px}
+ .clip:hover{background:#2a2f3f}
+ .clip.on{background:#25314a;border-color:var(--acc);color:#fff}
+ .clip small{color:var(--dim);font-variant-numeric:tabular-nums;font-size:10.5px}
+ .clip.on small{color:#a8c4f0}
+ .row{display:flex;align-items:center;gap:8px;margin:7px 0}
+ .row label{color:var(--dim);width:52px;flex:none;font-size:11.5px}
+ input[type=range]{flex:1;accent-color:var(--acc)}
+ .kv{display:flex;justify-content:space-between;padding:2.5px 0;font-size:12px}
+ .kv b{font-weight:500;color:var(--dim)}
+ .kv span{font-variant-numeric:tabular-nums}
+ .bar{height:15px;background:#222634;border-radius:3px;position:relative;overflow:hidden}
+ .bar i{position:absolute;top:0;bottom:0;background:var(--acc);opacity:.85}
+ .bar u{position:absolute;top:0;bottom:0;width:1px;background:#4a5266;left:50%}
+ .jrow{display:grid;grid-template-columns:62px 1fr 46px;gap:6px;align-items:center;
+       margin:3px 0;font-size:11px}
+ .jrow span:last-child{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+ #bottom{height:104px;background:var(--panel);border-top:1px solid var(--line);
+         padding:9px 14px;flex:none}
+ #tl{width:100%;height:42px;display:block;cursor:pointer}
+ .ctl{display:flex;align-items:center;gap:10px;margin-top:7px}
+ button{background:#262b39;color:var(--txt);border:1px solid var(--line);border-radius:5px;
+        padding:4px 11px;cursor:pointer;font:inherit;font-size:12px}
+ button:hover{background:#303648}
+ button.on{background:var(--acc);border-color:var(--acc);color:#0e1017}
+ .tog{display:flex;gap:5px;flex-wrap:wrap}
+ .hint{color:var(--dim);font-size:10.5px;margin-top:10px;line-height:1.45}
+ #drop{position:absolute;inset:0;background:#12141ae0;display:none;align-items:center;
+       justify-content:center;color:var(--acc);font-size:15px;pointer-events:none;
+       border:2px dashed var(--acc);z-index:5}
+ #drop.on{display:flex}
+ #hud{position:absolute;left:14px;top:11px;font-size:11px;color:var(--dim);
+      pointer-events:none;line-height:1.6;z-index:4}
+ #hud b{color:var(--txt);font-weight:600;font-size:12.5px}
+ #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+      color:var(--warn);font-size:13px;text-align:center;padding:40px;z-index:6}
+</style></head><body>
+<div id="wrap">
+ <div id="left">
+  <div id="view">
+    <canvas id="gl"></canvas>
+    <canvas id="c"></canvas>
+    <div id="hud"></div>
+    <div id="drop">drop a .usda clip to load it</div>
+    <div id="err">WebGL2 is unavailable, so the robot meshes cannot be drawn.<br>
+      Falling back to the skeleton view.</div>
+  </div>
+  <div id="bottom">
+    <canvas id="tl"></canvas>
+    <div class="ctl">
+      <button id="play">Pause</button>
+      <span style="color:var(--dim);font-size:11.5px">speed</span>
+      <input type="range" id="speed" min="5" max="200" value="100" style="width:104px">
+      <span id="spd" style="width:38px;font-variant-numeric:tabular-nums">1.00x</span>
+      <div class="tog" style="margin-left:auto">
+        <button id="tMesh" class="on">Robot</button>
+        <button id="tSkel">Skeleton</button>
+        <button id="tFollow" class="on">Follow root</button>
+        <button id="tTrail" class="on">Footprints</button>
+        <button id="tGhost">Ghost</button>
+        <button id="tAxes">Axes</button>
+      </div>
+    </div>
+  </div>
+ </div>
+ <div id="side">
+  <h1>QMini gait reference</h1>
+  <div class="sub">9 Table&nbsp;3 samples &middot; phase-tagged UsdSkel</div>
+  <div class="clips" id="clips"></div>
+
+  <h2>Playback</h2>
+  <div class="row"><label>frame</label><input type="range" id="frame" min="0" max="1" value="0"><span id="fno" style="width:52px;text-align:right;font-variant-numeric:tabular-nums"></span></div>
+
+  <h2>Gait state</h2>
+  <div id="state"></div>
+  <div style="margin:7px 0 2px"><div class="bar"><i id="phbar"></i></div></div>
+  <div class="kv" style="margin-top:2px"><b>phase &phi;</b><span id="phv"></span></div>
+
+  <h2>Joint angles vs safe limit</h2>
+  <div id="jnts"></div>
+
+  <div class="hint">
+   drag to orbit &middot; scroll to zoom &middot; shift-drag to pan &middot; space play/pause
+   &middot; &larr;/&rarr; step &middot; 1&ndash;9 clip &middot; R reset view.<br><br>
+   Geometry is the decimated visual mesh from <code>qmini_urdf-2legs.usda</code>,
+   rigidly bound to the skeleton via the file's own physics joint graph.
+   Bars show signed joint angle over the intersected safe envelope, amber past&nbsp;90%.
+   Drop a regenerated <code>.usda</code> on the view to load it.
+  </div>
+ </div>
+</div>
+<script>
+const CLIPS = __CLIPS__;
+const MESH  = __MESH__;
+
+/* ---------- small math ---------- */
+const qm=q=>{const[w,x,y,z]=q;return[
+ [1-2*(y*y+z*z),2*(x*y-w*z),2*(x*z+w*y)],
+ [2*(x*y+w*z),1-2*(x*x+z*z),2*(y*z-w*x)],
+ [2*(x*z-w*y),2*(y*z+w*x),1-2*(x*x+y*y)]];};
+const mv=(m,v)=>[m[0][0]*v[0]+m[0][1]*v[1]+m[0][2]*v[2],
+                 m[1][0]*v[0]+m[1][1]*v[1]+m[1][2]*v[2],
+                 m[2][0]*v[0]+m[2][1]*v[1]+m[2][2]*v[2]];
+const mm=(a,b)=>a.map((r,i)=>b[0].map((_,j)=>r.reduce((s,_,k)=>s+a[i][k]*b[k][j],0)));
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const scl=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const crs=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const nrm=a=>{const l=Math.hypot(...a)||1;return scl(a,1/l);};
+/* robot frame (x=left, y=back, z=up) -> view frame (x=fwd, y=left, z=up) */
+const R2V=p=>[-p[1],p[0],p[2]];
+
+/* column-major mat4 helpers */
+function m4mul(a,b){const o=new Float32Array(16);
+ for(let c=0;c<4;c++)for(let r=0;r<4;r++){let s=0;
+  for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k]; o[c*4+r]=s;} return o;}
+function m4persp(fovy,asp,zn,zf){const f=1/Math.tan(fovy/2),o=new Float32Array(16);
+ o[0]=f/asp;o[5]=f;o[10]=(zf+zn)/(zn-zf);o[11]=-1;o[14]=2*zf*zn/(zn-zf);return o;}
+function m4look(eye,ctr,up){const f=nrm(sub(ctr,eye)),s=nrm(crs(f,up)),u=crs(s,f);
+ return new Float32Array([s[0],u[0],-f[0],0, s[1],u[1],-f[1],0, s[2],u[2],-f[2],0,
+   -dot(s,eye),-dot(u,eye),dot(f,eye),1]);}
+/* model matrix from a robot-frame rotation+translation, with R2V folded in */
+function m4model(R,t){
+ const C=[[0,-1,0],[1,0,0],[0,0,1]];           // R2V as a matrix
+ const M=mm(C,R), p=mv(C,t);
+ return new Float32Array([M[0][0],M[1][0],M[2][0],0, M[0][1],M[1][1],M[2][1],0,
+   M[0][2],M[1][2],M[2][2],0, p[0],p[1],p[2],1]);}
+
+/* ---------- foot geometry (ankle frame, robot cm) ---------- */
+const CORN={L:[[0.44,5.46,-9.585],[0.44,-7.42,-9.585],[-1.41,-7.42,-9.585],[-1.41,5.46,-9.585]],
+            R:[[-0.44,5.46,-9.585],[-0.44,-7.42,-9.585],[1.41,-7.42,-9.585],[1.41,5.46,-9.585]]};
+const FOOT={L:[[1.24,7.12,-9.585],[1.24,-9.66,-9.585],[-3.70,-9.66,-9.585],[-3.70,7.12,-9.585]],
+            R:[[-1.24,7.12,-9.585],[-1.24,-9.66,-9.585],[3.70,-9.66,-9.585],[3.70,7.12,-9.585]]};
+
+/* ---------- state ---------- */
+let clip=CLIPS[0], f=0, playing=true, speed=1, acc=0, last=performance.now();
+const HOME={az:-0.72,el:0.26,d:118,pan:[0,0,0]};
+let cam={...HOME,pan:[0,0,0]};
+const opt={mesh:true,skel:false,follow:true,trail:true,ghost:false,axes:false};
+const view=document.getElementById('view');
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const glc=document.getElementById('gl');
+const tl=document.getElementById('tl'), tx=tl.getContext('2d');
+
+/* ---------- kinematics ---------- */
+function fk(cl,i){
+  const P=[],M=[];
+  for(let k=0;k<cl.joints.length;k++){
+    const j=cl.joints[k], Rl=qm(cl.rot[i][k]);
+    const t = k===0 ? cl.rootT[i] : j.t;
+    if(j.parent<0){P.push(t);M.push(Rl);}
+    else{P.push(add(P[j.parent],mv(M[j.parent],t)));M.push(mm(M[j.parent],Rl));}
+  }
+  return {P,M};
+}
+function jointAngle(cl,i,k){
+  const q=cl.rot[i][k], v=[q[1],q[2],q[3]], l=Math.hypot(...v);
+  let a=2*Math.atan2(l,q[0])*180/Math.PI;
+  if(a>180)a-=360;
+  if(l>1e-9&&dot(scl(v,1/l),cl.joints[k].axis)<0)a=-a;
+  return a;
+}
+function footprints(cl){
+  const out=[];
+  for(const s of['L','R']){
+    const ci=cl.joints.findIndex(j=>j.name===s+'_ankle');
+    const arr=s==='L'?cl.lc:cl.rc; let prev=0;
+    for(let i=0;i<=cl.n;i++){
+      if(arr[i]&&!prev){const {P,M}=fk(cl,i);
+        out.push({s,pts:FOOT[s].map(c=>R2V(add(P[ci],mv(M[ci],c))))});}
+      prev=arr[i];
+    }
+  }
+  return out;
+}
+let prints=[];
+
+/* ---------- WebGL ---------- */
+const b64=s=>{const b=atob(s),u=new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u.buffer;};
+let gl=null,prog=null,U={},vao=null,parts=[],lineBuf=null;
+const COL={Root:[.62,.65,.72],L:[.82,.45,.42],R:[.40,.58,.85]};
+function partColor(j){
+  if(j==='Root')return COL.Root;
+  const base=j[0]==='L'?COL.L:COL.R;
+  const deep=j.indexOf('ankle')>0||j.indexOf('knee')>0;
+  return deep?base:base.map((c,i)=>c*0.82+COL.Root[i]*0.18);
+}
+function initGL(){
+  gl=glc.getContext('webgl2',{antialias:true,alpha:true});
+  if(!gl){document.getElementById('err').style.display='flex';
+          opt.mesh=false;opt.skel=true;return false;}
+  const vs=`#version 300 es
+  in vec3 aPos; uniform mat4 uMVP, uModel; out vec3 vW;
+  void main(){ vW=(uModel*vec4(aPos,1.0)).xyz; gl_Position=uMVP*vec4(aPos,1.0); }`;
+  const fs=`#version 300 es
+  precision highp float; in vec3 vW; out vec4 o;
+  uniform vec3 uColor; uniform float uAlpha; uniform int uLit;
+  void main(){
+    if(uLit==0){ o=vec4(uColor,uAlpha); return; }
+    vec3 n=normalize(cross(dFdx(vW),dFdy(vW)));      // exact flat shading
+    vec3 L=normalize(vec3(0.35,0.55,0.90));
+    float d=max(dot(n,L),0.0);
+    float amb=0.30+0.16*clamp(n.z,-1.0,1.0);
+    vec3 c=uColor*(amb+0.72*d);
+    c+=vec3(0.09,0.10,0.13)*pow(1.0-abs(n.z),3.0); // soft rim
+    o=vec4(c,uAlpha);
+  }`;
+  const mk=(t,s)=>{const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(sh));
+    return sh;};
+  prog=gl.createProgram();
+  gl.attachShader(prog,mk(gl.VERTEX_SHADER,vs));
+  gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fs));
+  gl.bindAttribLocation(prog,0,'aPos');
+  gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(prog));
+  for(const n of['uMVP','uModel','uColor','uAlpha','uLit'])U[n]=gl.getUniformLocation(prog,n);
+
+  const pos=new Float32Array(b64(MESH.pos)), idx=new Uint32Array(b64(MESH.idx));
+  vao=gl.createVertexArray(); gl.bindVertexArray(vao);
+  const vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vb);
+  gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+  const ib=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,idx,gl.STATIC_DRAW);
+  gl.bindVertexArray(null);
+
+  /* group parts by joint, tracking the index range of each */
+  let off=0;
+  for(const p of MESH.parts){
+    parts.push({joint:p.joint,first:off,count:p.nf*3,color:partColor(p.joint)});
+    off+=p.nf*3;
+  }
+  lineBuf=gl.createBuffer();
+  gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  return true;
+}
+function glLines(verts,color,alpha,mvp){
+  gl.bindVertexArray(null);
+  gl.bindBuffer(gl.ARRAY_BUFFER,lineBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+  gl.uniformMatrix4fv(U.uMVP,false,mvp);
+  gl.uniformMatrix4fv(U.uModel,false,IDENT);
+  gl.uniform3fv(U.uColor,color); gl.uniform1f(U.uAlpha,alpha); gl.uniform1i(U.uLit,0);
+  gl.drawArrays(gl.LINES,0,verts.length/3);
+}
+const IDENT=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
+
+/* ---------- camera ---------- */
+let W=0,H=0,VP=null,eye=null,camR=[1,0,0],camU=[0,0,1];
+const FOV=0.72;
+function resize(){
+  const r=view.getBoundingClientRect(), dpr=Math.min(devicePixelRatio||1,2);
+  W=r.width;H=r.height;
+  for(const el of[cv,glc]){el.width=Math.round(W*dpr);el.height=Math.round(H*dpr);}
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(gl)gl.viewport(0,0,glc.width,glc.height);
+}
+function buildCam(center0){
+  /* pan is a world-space offset of the orbit target, so the GL pass and the 2D
+     overlay share one matrix -- a pixel offset cannot be folded into a
+     perspective matrix, which would make the two views drift apart. */
+  const center=add(center0,cam.pan);
+  const ce=Math.cos(cam.el),se=Math.sin(cam.el);
+  eye=add(center,[cam.d*ce*Math.cos(cam.az),cam.d*ce*Math.sin(cam.az),cam.d*se]);
+  const fwd=nrm(sub(center,eye));
+  camR=nrm(crs(fwd,[0,0,1])); camU=crs(camR,fwd);
+  VP=m4mul(m4persp(FOV,W/H,4,900),m4look(eye,center,[0,0,1]));
+}
+/* project a view-frame point with exactly the matrix the GPU uses */
+function proj(p){
+  const x=VP[0]*p[0]+VP[4]*p[1]+VP[8]*p[2]+VP[12];
+  const y=VP[1]*p[0]+VP[5]*p[1]+VP[9]*p[2]+VP[13];
+  const w=VP[3]*p[0]+VP[7]*p[1]+VP[11]*p[2]+VP[15];
+  if(w<=0.001)return null;
+  return [(x/w*0.5+0.5)*W,(0.5-y/w*0.5)*H];
+}
+
+/* ---------- draw ---------- */
+function draw(){
+  const {P,M}=fk(clip,f);
+  const rootV=R2V(P[0]);
+  const center=opt.follow?[rootV[0],rootV[1],16]:[0,0,16];
+  buildCam(center);
+  const MVP=VP;
+
+  /* ---- GL pass ---- */
+  if(gl){
+    gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(prog);
+    /* ground grid */
+    const g=20,ext=9,cx=Math.round(center[0]/g)*g,cy=Math.round(center[1]/g)*g,L=[];
+    for(let k=-ext;k<=ext;k++){
+      L.push(cx+k*g,cy-ext*g,0, cx+k*g,cy+ext*g,0);
+      L.push(cx-ext*g,cy+k*g,0, cx+ext*g,cy+k*g,0);
+    }
+    gl.depthMask(false); glLines(L,[.16,.18,.24],1,MVP);
+    /* footprints */
+    if(opt.trail){
+      const F=[];
+      for(const p of prints)for(let k=0;k<4;k++){
+        const a=p.pts[k],b=p.pts[(k+1)%4]; F.push(a[0],a[1],.05,b[0],b[1],.05);}
+      if(F.length)glLines(F,[.45,.50,.62],.85,MVP);
+    }
+    if(opt.axes){
+      const o=[center[0],center[1],0.1];
+      glLines([...o,o[0]+14,o[1],o[2]],[.88,.40,.37],1,MVP);
+      glLines([...o,o[0],o[1]+14,o[2]],[.29,.75,.53],1,MVP);
+      glLines([...o,o[0],o[1],o[2]+14],[.36,.66,.98],1,MVP);
+    }
+    gl.depthMask(true);
+    /* robot */
+    if(opt.mesh){
+      gl.bindVertexArray(vao);
+      gl.uniform1i(U.uLit,1); gl.uniform1f(U.uAlpha,1);
+      const idx={};
+      clip.joints.forEach((j,k)=>idx[j.name==='Root'?'Root':j.name]=k);
+      for(const p of parts){
+        const k=idx[p.joint]; if(k===undefined)continue;
+        const Mo=m4model(M[k],P[k]);
+        gl.uniformMatrix4fv(U.uModel,false,Mo);
+        gl.uniformMatrix4fv(U.uMVP,false,m4mul(MVP,Mo));
+        gl.uniform3fv(U.uColor,p.color);
+        gl.drawElements(gl.TRIANGLES,p.count,gl.UNSIGNED_INT,p.first*4);
+      }
+      gl.bindVertexArray(null);
+    }
+  }
+
+  /* ---- 2D overlay ---- */
+  ctx.clearRect(0,0,W,H);
+  const seg=(a,b,col,w)=>{const A=proj(a),B=proj(b);if(!A||!B)return;
+    ctx.strokeStyle=col;ctx.lineWidth=w;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();};
+  const dot2=(p,col,r)=>{const A=proj(p);if(!A)return;
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(A[0],A[1],r,0,7);ctx.fill();};
+  const poly=(pts,fill,stroke)=>{const q=pts.map(proj);if(q.some(p=>!p))return;
+    ctx.beginPath();q.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+    ctx.closePath();
+    if(fill){ctx.fillStyle=fill;ctx.fill();}
+    if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke();}};
+
+  if(!gl){ /* fallback ground */
+    const g=20,ext=8,cx=Math.round(center[0]/g)*g,cy=Math.round(center[1]/g)*g;
+    for(let k=-ext;k<=ext;k++){
+      seg([cx+k*g,cy-ext*g,0],[cx+k*g,cy+ext*g,0],'#232837',1);
+      seg([cx-ext*g,cy+k*g,0],[cx+ext*g,cy+k*g,0],'#232837',1);
+    }
+    if(opt.trail)for(const p of prints)
+      poly(p.pts,p.s==='L'?'#e0655f1c':'#5b8ff91c',p.s==='L'?'#e0655f55':'#5b8ff955');
+  }
+  if(opt.ghost)for(let k=6;k>0;k--){
+    const G=fk(clip,(f-k*3+clip.n*3)%clip.n);
+    for(let j=1;j<clip.joints.length;j++){
+      const col=clip.joints[j].name[0]==='L'?'rgba(224,101,95,':'rgba(91,143,249,';
+      seg(R2V(G.P[clip.joints[j].parent]),R2V(G.P[j]),col+(0.05+0.022*(6-k))+')',1.5);
+    }
+  }
+  if(opt.skel){
+    for(let j=1;j<clip.joints.length;j++){
+      const nm=clip.joints[j].name, on=(nm[0]==='L'?clip.lc:clip.rc)[f];
+      const col=nm[0]==='L'?'#ff8b85':'#84b0ff';
+      seg(R2V(P[clip.joints[j].parent]),R2V(P[j]),col,on?4:2.6);
+      dot2(R2V(P[j]),col,3);
+    }
+    for(const s of['L','R']){
+      const ci=clip.joints.findIndex(j=>j.name===s+'_ankle');
+      const w=c=>R2V(add(P[ci],mv(M[ci],c)));
+      const col=s==='L'?'#ff8b85':'#84b0ff';
+      seg(R2V(P[ci]),w([0,0,-9.585]),col,3);
+      poly(FOOT[s].map(w),null,col+'cc');
+      poly(CORN[s].map(w),(s==='L'?clip.lc:clip.rc)[f]?col+'66':col+'22',null);
+    }
+    dot2(rootV,'#ffffff',3.4);
+    seg(rootV,[rootV[0],rootV[1],0],'#4a5266',1);
+  }
+
+  const label={LS:'left swing',DS1:'double support',RS:'right swing',DS2:'double support'};
+  document.getElementById('hud').innerHTML=
+    `<b>${clip.name}</b><br>${label[clip.state[f]]} &middot; t = ${(f/clip.fps).toFixed(3)} s`;
+}
+
+/* ---------- timeline ---------- */
+function drawTL(){
+  const r=tl.getBoundingClientRect(), dpr=Math.min(devicePixelRatio||1,2);
+  tl.width=r.width*dpr; tl.height=r.height*dpr; tx.setTransform(dpr,0,0,dpr,0,0);
+  const w=r.width,h=r.height,n=clip.n;
+  tx.clearRect(0,0,w,h);
+  for(let i=0;i<n;i++){
+    tx.fillStyle={LS:'#e0655f',DS1:'#39405480',RS:'#5b8ff9',DS2:'#39405480'}[clip.state[i]];
+    tx.fillRect(i/n*w,h-13,w/n+1,13);
+  }
+  tx.strokeStyle='#937860';tx.lineWidth=1.6;tx.beginPath();
+  for(let i=0;i<=n;i++){const x=i/n*w,y=(h-17)*(1-clip.phase[i])+2;i?tx.lineTo(x,y):tx.moveTo(x,y);}
+  tx.stroke();
+  const nm=['LLO','LTD','RLO','RTD'];
+  clip.events.slice(0,4).forEach((te,k)=>{
+    const x=te/clip.T*w;
+    tx.strokeStyle='#5a6270';tx.lineWidth=1;tx.setLineDash([2,3]);
+    tx.beginPath();tx.moveTo(x,0);tx.lineTo(x,h-13);tx.stroke();tx.setLineDash([]);
+    tx.fillStyle='#828a9c';tx.font='9px ui-sans-serif';
+    tx.fillText(nm[k]+' '+clip.phis[k],x+3,10);
+  });
+  const px=f/n*w;
+  tx.strokeStyle='#6ea8fe';tx.lineWidth=1.8;
+  tx.beginPath();tx.moveTo(px,0);tx.lineTo(px,h);tx.stroke();
+}
+
+/* ---------- panel ---------- */
+function buildClips(){
+  const el=document.getElementById('clips'); el.innerHTML='';
+  CLIPS.forEach(c=>{
+    const b=document.createElement('div');
+    b.className='clip'+(c===clip?' on':'');
+    const v=c.vel;
+    const lbl=v[0]?`ẋ ${v[0]>0?'+':''}${v[0]}`:v[1]?`ẏ ${v[1]>0?'+':''}${v[1]}`:
+              v[2]?`θ̇ ${v[2]>0?'+':''}${v[2]}`:'0';
+    b.innerHTML=`<span>${c.sample.replace(/_/g,' ')}</span><small>${lbl}</small>`;
+    b.onclick=()=>setClip(c);
+    el.appendChild(b);
+  });
+}
+function panel(){
+  const v=clip.vel;
+  document.getElementById('state').innerHTML=
+   `<div class="kv"><b>velocity</b><span>${v[0]}, ${v[1]} m/s &middot; ${v[2]} rad/s</span></div>
+    <div class="kv"><b>period T</b><span>${clip.T.toFixed(2)} s &middot; ${clip.n} frames</span></div>
+    <div class="kv"><b>contact</b><span>${clip.state[f]}</span></div>
+    <div class="kv"><b>support</b><span>${clip.lc[f]?'L':''}${clip.lc[f]&&clip.rc[f]?'+':''}${clip.rc[f]?'R':''}</span></div>`;
+  document.getElementById('phbar').style.cssText=`left:0;width:${clip.phase[f]*100}%`;
+  document.getElementById('phv').textContent=clip.phase[f].toFixed(3);
+  let h='';
+  for(let k=1;k<clip.joints.length;k++){
+    const j=clip.joints[k], a=jointAngle(clip,f,k), u=Math.abs(a)/j.limit;
+    const col=u>0.9?'var(--warn)':(j.name[0]==='L'?'var(--l)':'var(--r)');
+    const half=a/j.limit*50;
+    h+=`<div class="jrow"><span style="color:var(--dim)">${j.name}</span>
+        <div class="bar"><u></u><i style="left:${a<0?50+half:50}%;width:${Math.abs(half)}%;
+        background:${col}"></i></div><span>${a.toFixed(1)}&deg;</span></div>`;
+  }
+  document.getElementById('jnts').innerHTML=h;
+  document.getElementById('fno').textContent=f+' / '+clip.n;
+  document.getElementById('frame').value=f;
+}
+function setClip(c){
+  clip=c; f=0; prints=footprints(c);
+  document.getElementById('frame').max=c.n;
+  buildClips(); render();
+}
+function render(){draw();drawTL();panel();}
+
+/* ---------- loop ---------- */
+function tick(now){
+  const dt=Math.min((now-last)/1000,0.1); last=now;
+  if(playing){acc+=dt*speed*clip.fps;
+    if(acc>=1){f=(f+Math.floor(acc))%clip.n;acc%=1;render();}}
+  requestAnimationFrame(tick);
+}
+
+/* ---------- interaction ---------- */
+let drag=null;
+view.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,s:e.shiftKey};
+  view.setPointerCapture(e.pointerId);view.classList.add('drag');});
+view.addEventListener('pointermove',e=>{if(!drag)return;
+  const dx=e.clientX-drag.x, dy=e.clientY-drag.y; drag.x=e.clientX;drag.y=e.clientY;
+  if(drag.s){const k=2*cam.d*Math.tan(FOV/2)/H;
+    cam.pan=sub(cam.pan,add(scl(camR,dx*k),scl(camU,-dy*k)));}
+  else{cam.az-=dx*0.008;cam.el=Math.max(-0.35,Math.min(1.45,cam.el+dy*0.006));}
+  draw();});
+addEventListener('pointerup',()=>{drag=null;view.classList.remove('drag');});
+view.addEventListener('wheel',e=>{e.preventDefault();
+  cam.d=Math.max(28,Math.min(520,cam.d*(1+Math.sign(e.deltaY)*0.09)));draw();},{passive:false});
+tl.addEventListener('pointerdown',e=>{
+  const set=ev=>{const r=tl.getBoundingClientRect();
+    f=Math.max(0,Math.min(clip.n,Math.round((ev.clientX-r.left)/r.width*clip.n)));
+    playing=false;document.getElementById('play').textContent='Play';render();};
+  set(e); const mv=ev=>set(ev);
+  addEventListener('pointermove',mv);
+  addEventListener('pointerup',()=>removeEventListener('pointermove',mv),{once:true});});
+document.getElementById('frame').oninput=e=>{f=+e.target.value;render();};
+document.getElementById('play').onclick=e=>{playing=!playing;
+  e.target.textContent=playing?'Pause':'Play';};
+document.getElementById('speed').oninput=e=>{speed=e.target.value/100;
+  document.getElementById('spd').textContent=speed.toFixed(2)+'x';};
+for(const[id,key]of[['tMesh','mesh'],['tSkel','skel'],['tFollow','follow'],
+                    ['tTrail','trail'],['tGhost','ghost'],['tAxes','axes']])
+  document.getElementById(id).onclick=e=>{opt[key]=!opt[key];
+    e.target.classList.toggle('on',opt[key]);draw();};
+addEventListener('keydown',e=>{
+  if(e.key===' '){e.preventDefault();document.getElementById('play').click();}
+  else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
+    f=(f+(e.key==='ArrowRight'?1:-1)+clip.n)%clip.n;
+    playing=false;document.getElementById('play').textContent='Play';render();}
+  else if(e.key==='r'||e.key==='R'){cam={...HOME,pan:[0,0,0]};draw();}
+  else if(/^[1-9]$/.test(e.key)&&CLIPS[+e.key-1])setClip(CLIPS[+e.key-1]);});
+addEventListener('resize',()=>{resize();render();});
+
+/* ---------- drop a .usda ---------- */
+const dz=document.getElementById('drop');
+['dragenter','dragover'].forEach(t=>view.addEventListener(t,e=>{
+  e.preventDefault();dz.classList.add('on');}));
+['dragleave','drop'].forEach(t=>view.addEventListener(t,e=>{
+  e.preventDefault();dz.classList.remove('on');}));
+view.addEventListener('drop',async e=>{
+  const file=e.dataTransfer.files[0]; if(!file)return;
+  try{const c=parseUsda(await file.text(),file.name.replace('.usda',''));
+      CLIPS.push(c);setClip(c);}catch(err){alert('could not parse: '+err.message);}
+});
+function block(src,key){
+  const s=src.indexOf(key); if(s<0)throw new Error('missing '+key);
+  let i=src.indexOf('{',s),d=0,j=i;
+  for(;;j++){if(src[j]==='{')d++;else if(src[j]==='}'&&--d===0)break;}
+  return src.slice(i+1,j);
+}
+function rows(body,cast){
+  const out=[];
+  for(const ln of body.trim().split('\n')){
+    const m=ln.trim().replace(/,$/,'').split(/:(.+)/);
+    if(m.length<2)continue; out[+m[0]]=cast(m[1].trim());
+  }
+  return out;
+}
+const nums=s=>[...s.matchAll(/\(([^)]*)\)/g)].map(m=>m[1].split(',').map(Number));
+function parseUsda(src,name){
+  const jp=/uniform token\[\] joints = \[([\s\S]*?)\]/.exec(src)[1]
+            .split(',').map(s=>s.trim().replace(/"/g,''));
+  const rest=nums(/uniform matrix4d\[\] restTransforms = \[([\s\S]*?)\]\n/.exec(src)[1]);
+  const rt=[]; for(let k=0;k<jp.length;k++)rt.push(rest[k*4+3].slice(0,3));
+  const trans=rows(block(src,'float3[] translations.timeSamples'),nums);
+  const rot=rows(block(src,'quatf[] rotations.timeSamples'),nums);
+  const phase=rows(block(src,'float primvars:phase.timeSamples'),Number);
+  const state=rows(block(src,'token primvars:contactState.timeSamples'),s=>s.replace(/"/g,''));
+  const lc=rows(block(src,'float primvars:leftContact.timeSamples'),Number);
+  const rc=rows(block(src,'float primvars:rightContact.timeSamples'),Number);
+  const g=(re,d)=>{const m=re.exec(src);return m?m[1]:d;};
+  const SAFEJ={hip_yaw:30,hip_roll:15,hip_pitch:50,knee:50,ankle:40};
+  const AX={hip_yaw:[0,0,1],hip_pitch:[-1,0,0],knee:[-1,0,0],ankle:[-1,0,0]};
+  const joints=jp.map((p,k)=>{const nm=p.split('/').pop(), jn=nm.slice(2), side=nm[0];
+    return{name:nm,parent:k?jp.indexOf(p.split('/').slice(0,-1).join('/')):-1,
+      t:rt[k],axis:k?(jn==='hip_roll'?[0,side==='L'?-1:1,0]:AX[jn]):null,
+      limit:k?SAFEJ[jn]:null};});
+  return{name,sample:g(/sampleName = "([^"]*)"/,name),
+    vel:g(/velocity_mps_radps = \(([^)]*)\)/).split(',').map(Number),
+    T:+g(/cyclePeriod = ([\d.eE+-]+)/),fps:+g(/framesPerSecond = (\d+)/),
+    n:rot.length-1,events:g(/eventTimes = \[([^\]]*)\]/).split(',').map(Number),
+    phis:g(/eventPhases = \[([^\]]*)\]/).split(',').map(Number),
+    joints,rootT:trans.map(t=>t[0]),rot,phase,state,
+    lc:lc.map(Number),rc:rc.map(Number)};
+}
+
+/* ---------- go ---------- */
+try{initGL();}catch(e){console.error(e);
+  document.getElementById('err').style.display='flex';opt.mesh=false;opt.skel=true;
+  document.getElementById('tMesh').classList.remove('on');
+  document.getElementById('tSkel').classList.add('on');}
+resize(); setClip(CLIPS[0]); requestAnimationFrame(tick);
+</script></body></html>

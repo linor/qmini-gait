@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>QMini gait editor</title>
+<style>
+ :root{--bg:#12141a;--panel:#1a1d26;--line:#2a2f3d;--txt:#d7dbe4;--dim:#828a9c;
+       --acc:#6ea8fe;--l:#e0655f;--r:#5b8ff9;--warn:#e0a458;--ok:#4bbf87;--edit:#c9a0ff}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--txt);overflow:hidden;
+      font:13px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+ #wrap{display:flex;height:100vh}
+ #left{flex:1;display:flex;flex-direction:column;min-width:0}
+ #view{flex:1;position:relative;min-height:0;cursor:grab}
+ #view.drag{cursor:grabbing}
+ #gl,#c{position:absolute;inset:0;width:100%;height:100%;display:block}
+ #c{pointer-events:none}
+ #side{width:392px;background:var(--panel);border-left:1px solid var(--line);
+       overflow-y:auto;padding:13px}
+ h1{font-size:14px;margin:0 0 2px;font-weight:600}
+ .sub{color:var(--dim);font-size:11px;margin-bottom:11px}
+ h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
+    margin:14px 0 6px;font-weight:600;display:flex;justify-content:space-between}
+ h2 a{color:var(--acc);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400}
+ .kv{display:flex;justify-content:space-between;padding:2px 0;font-size:12px;gap:8px}
+ .kv b{font-weight:500;color:var(--dim)}
+ .kv span{font-variant-numeric:tabular-nums;text-align:right}
+ .samples{display:grid;gap:3px}
+ .smp{padding:5px 9px;border-radius:5px;background:#222634;border:1px solid transparent;
+      cursor:pointer;display:flex;justify-content:space-between;gap:8px;font-size:12px}
+ .smp:hover{background:#2a2f3f}
+ .smp.on{background:#25314a;border-color:var(--acc);color:#fff}
+ .smp small{color:var(--dim);font-variant-numeric:tabular-nums;font-size:10.5px}
+ .smp .dot{color:var(--edit);font-weight:700}
+ .arow{display:grid;grid-template-columns:88px 1fr 66px;gap:6px;align-items:center;
+       margin:1px 0;font-size:11px}
+ .arow label{color:var(--dim);cursor:pointer}
+ .arow.mod label{color:var(--edit);font-weight:600}
+ .arow span{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim);font-size:10.5px}
+ input[type=range]{width:100%;accent-color:var(--acc);height:14px}
+ .arow.mod input[type=range]{accent-color:var(--edit)}
+ select{width:100%;background:#222634;color:var(--txt);border:1px solid var(--line);
+        border-radius:5px;padding:4px 6px;font:inherit;font-size:11.5px}
+ #cv{width:100%;height:180px;display:block;background:#161922;border-radius:6px;
+     margin-top:6px;cursor:crosshair;touch-action:none}
+ .bar{height:13px;background:#222634;border-radius:3px;position:relative;overflow:hidden}
+ .bar i{position:absolute;top:0;bottom:0;left:0;background:var(--acc);opacity:.9}
+ .bar u{position:absolute;top:0;bottom:0;width:1px;background:#4a5266;left:50%}
+ .jrow{display:grid;grid-template-columns:58px 1fr 42px;gap:6px;align-items:center;
+       margin:2px 0;font-size:10.5px}
+ .jrow span:last-child{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+ .wrow{display:grid;grid-template-columns:84px 1fr 36px;gap:6px;align-items:center;
+       margin:2px 0;font-size:11px}
+ .wrow span:last-child{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+ .wrow.z{opacity:.35}
+ #fig{width:100%;height:118px;display:block;background:#161922;border-radius:6px}
+ #bottom{height:82px;background:var(--panel);border-top:1px solid var(--line);
+         padding:9px 13px;flex:none;display:flex;align-items:center;gap:14px}
+ button{background:#262b39;color:var(--txt);border:1px solid var(--line);border-radius:5px;
+        padding:4px 10px;cursor:pointer;font:inherit;font-size:12px}
+ button:hover{background:#303648}
+ button.on{background:var(--acc);border-color:var(--acc);color:#0e1017}
+ button.go{background:#25402f;border-color:#3a6b4d;color:#8fe0b0}
+ button.go:hover{background:#2e5039}
+ .tog{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto}
+ .tabs{display:flex;gap:4px}
+ .tab{padding:5px 14px;border-radius:5px 5px 0 0;background:#222634;cursor:pointer;
+      border:1px solid var(--line);border-bottom:none;font-size:12px;color:var(--dim)}
+ .tab.on{background:var(--panel);color:var(--txt);font-weight:600}
+ .hint{color:var(--dim);font-size:10.5px;margin-top:9px;line-height:1.45}
+ #hud{position:absolute;left:13px;top:10px;font-size:11px;color:var(--dim);
+      pointer-events:none;line-height:1.6;z-index:4}
+ #hud b{color:var(--txt);font-weight:600;font-size:12.5px}
+ #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+      color:var(--warn);font-size:13px;text-align:center;padding:40px;z-index:6}
+ .ok{color:var(--ok)} .wr{color:var(--warn)} .ed{color:var(--edit)}
+ .bad{background:#3a2126;border:1px solid #6b3540;color:#ffb3b3;border-radius:5px;
+      padding:5px 8px;font-size:11px;margin-top:6px}
+ code{color:#a8c4f0}
+ .hidden{display:none}
+</style></head><body>
+<div id="wrap">
+ <div id="left">
+  <div id="view">
+    <canvas id="gl"></canvas><canvas id="c"></canvas>
+    <div id="hud"></div>
+    <div id="err">WebGL2 unavailable &mdash; falling back to the skeleton view.</div>
+  </div>
+  <div id="bottom">
+    <div class="tabs">
+      <div class="tab on" id="tabEdit">Edit sample</div>
+      <div class="tab" id="tabBlend">Blend preview</div>
+    </div>
+    <canvas id="pad" style="width:230px;height:50px;flex:none"></canvas>
+    <div id="modehint" style="font-size:11px;color:var(--dim);line-height:1.5"></div>
+    <div class="tog">
+      <button id="tFast">Fast</button>
+      <button id="tMesh" class="on">Robot</button>
+      <button id="tSkel">Skeleton</button>
+      <button id="tTrail" class="on">Footholds</button>
+      <button id="tFollow" class="on">Follow</button>
+      <button id="tReset">Reset view</button>
+    </div>
+  </div>
+ </div>
+
+ <div id="side">
+  <h1>QMini gait editor</h1>
+  <div class="sub">hand tuning &Pi; &mdash; the planner and IK re-run on every change</div>
+
+  <h2>Samples <a id="aExport">export overrides</a></h2>
+  <div class="samples" id="samples"></div>
+  <div style="display:flex;gap:5px;margin-top:6px">
+    <button id="bImport" style="flex:1">Import overrides…</button>
+    <button id="bResetSample" style="flex:1">Reset this sample</button>
+    <input type="file" id="fImport" accept=".json,application/json" class="hidden">
+  </div>
+  <div id="editcount" class="kv" style="margin-top:4px"><b>edited</b><span></span></div>
+  <div id="invalid"></div>
+
+  <div id="editPane">
+   <h2>Attributes &amp; timing</h2>
+   <div id="attrs"></div>
+
+   <h2>Function curve <a id="aResetCurve">reset curve</a></h2>
+   <select id="curveSel"></select>
+   <canvas id="cv"></canvas>
+   <div class="kv"><b id="cvinfo">drag knots vertically; interior knots also move in time; the small handles set the tangent</b></div>
+  </div>
+
+  <div id="blendPane" class="hidden">
+   <h2>Command vs travelled</h2>
+   <div id="cmd"></div>
+   <h2>Blend space (Fig. 9)</h2>
+   <canvas id="fig"></canvas>
+   <h2>Sample weights</h2>
+   <div id="wts"></div>
+  </div>
+
+  <h2>Constraint health</h2>
+  <div id="diag"></div>
+
+  <h2>Joint angles vs safe limit</h2>
+  <div id="jnts"></div>
+
+  <div class="hint">
+   Edits stay inside &Pi;, so a convex blend of edited samples is still a valid
+   sample and the swing curves keep their clamped endpoints. Watch the
+   constraint block: swing clearance should stay at or above zero and the IK
+   residual at zero. If you push an edit past what the legs can reach, the
+   residual rises and the joint bars saturate.<br><br>
+   <code>export overrides</code> writes <code>gait_overrides.json</code>; feed it
+   to <code>generate.py</code> to rebuild the clips, then
+   <code>export_isaac_motion.py</code> for the Isaac <code>.npz</code>.
+  </div>
+ </div>
+</div>
+<script>
+const PARAMS = __PARAMS__;
+const MESH   = __MESH__;
+__CORE__
+__CURVES__
+__STEP__
+__INPUT__
+__EDITOR__
+
+/* ===================== view frame / renderer (as in the blend viewer) ===== */
+const C2RT=[[0,-1,0],[1,0,0],[0,0,1]];
+function m4model(Rchar,pchar_m){
+  const M=mul33(Rchar,C2RT), p=[pchar_m[0]*100,pchar_m[1]*100,pchar_m[2]*100];
+  return new Float32Array([M[0][0],M[1][0],M[2][0],0, M[0][1],M[1][1],M[2][1],0,
+    M[0][2],M[1][2],M[2][2],0, p[0],p[1],p[2],1]);
+}
+function m4mul(a,b){const o=new Float32Array(16);
+ for(let c=0;c<4;c++)for(let r=0;r<4;r++){let s=0;
+  for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k]; o[c*4+r]=s;} return o;}
+function m4persp(f_,asp,zn,zf){const f=1/Math.tan(f_/2),o=new Float32Array(16);
+ o[0]=f/asp;o[5]=f;o[10]=(zf+zn)/(zn-zf);o[11]=-1;o[14]=2*zf*zn/(zn-zf);return o;}
+const nrm3=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];};
+const crs3=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const dot3=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function m4look(eye,ctr,up){const f=nrm3(sub3(ctr,eye)),s=nrm3(crs3(f,up)),u=crs3(s,f);
+ return new Float32Array([s[0],u[0],-f[0],0, s[1],u[1],-f[1],0, s[2],u[2],-f[2],0,
+   -dot3(s,eye),-dot3(u,eye),dot3(f,eye),1]);}
+const JNAMES=["Root"].concat(["L","R"].flatMap(s=>CHAIN.map(j=>s+"_"+j)));
+function worldFK(){
+  const P=[S.pel],M=[S.pelR];
+  for(const side of["L","R"]){
+    const leg=LEGS[side];
+    let R=S.pelR,p=add3(S.pel,mul3(S.pelR,leg.a.hip_yaw));
+    R=mul33(R,rotAxis(leg.ax.hip_yaw,S.q[side][0])); P.push(p); M.push(R);
+    for(let i=1;i<CHAIN.length;i++){
+      const j=CHAIN[i];
+      p=add3(p,mul3(R,leg.local[j])); R=mul33(R,rotAxis(leg.ax[j],S.q[side][i]));
+      P.push(p); M.push(R);
+    }
+  }
+  return {P,M};
+}
+const b64=s=>{const b=atob(s),u=new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u.buffer;};
+const view=document.getElementById('view');
+const cv2=document.getElementById('c'),ctx=cv2.getContext('2d');
+const glc=document.getElementById('gl');
+let gl=null,prog=null,U={},vao=null,parts=[],lineBuf=null;
+const CB={Root:[.62,.65,.72],L:[.82,.45,.42],R:[.40,.58,.85]};
+function partColor(j){
+  if(j==='Root')return CB.Root;
+  const b=j[0]==='L'?CB.L:CB.R;
+  return (j.includes('ankle')||j.includes('knee'))?b:b.map((c,i)=>c*.82+CB.Root[i]*.18);
+}
+const IDENT=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
+function initGL(){
+  gl=glc.getContext('webgl2',{antialias:true,alpha:true});
+  if(!gl){document.getElementById('err').style.display='flex';
+          opt.mesh=false;opt.skel=true;return false;}
+  const vs=`#version 300 es
+  in vec3 aPos; uniform mat4 uMVP,uModel; out vec3 vW;
+  void main(){ vW=(uModel*vec4(aPos,1.0)).xyz; gl_Position=uMVP*vec4(aPos,1.0); }`;
+  const fs=`#version 300 es
+  precision highp float; in vec3 vW; out vec4 o;
+  uniform vec3 uColor; uniform float uAlpha; uniform int uLit;
+  void main(){
+    if(uLit==0){o=vec4(uColor,uAlpha);return;}
+    vec3 n=normalize(cross(dFdx(vW),dFdy(vW)));
+    vec3 L=normalize(vec3(0.35,0.55,0.90));
+    float d=max(dot(n,L),0.0);
+    float amb=0.30+0.16*clamp(n.z,-1.0,1.0);
+    vec3 c=uColor*(amb+0.72*d);
+    c+=vec3(0.09,0.10,0.13)*pow(1.0-abs(n.z),3.0);
+    o=vec4(c,uAlpha);
+  }`;
+  const mk=(t,src)=>{const sh=gl.createShader(t);gl.shaderSource(sh,src);gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(sh));
+    return sh;};
+  prog=gl.createProgram();
+  gl.attachShader(prog,mk(gl.VERTEX_SHADER,vs));
+  gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fs));
+  gl.bindAttribLocation(prog,0,'aPos'); gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(prog));
+  for(const n of['uMVP','uModel','uColor','uAlpha','uLit'])U[n]=gl.getUniformLocation(prog,n);
+  const pos=new Float32Array(b64(MESH.pos)),idx=new Uint32Array(b64(MESH.idx));
+  vao=gl.createVertexArray(); gl.bindVertexArray(vao);
+  const vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vb);
+  gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+  const ib=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,idx,gl.STATIC_DRAW);
+  gl.bindVertexArray(null);
+  let off=0;
+  for(const p of MESH.parts){
+    parts.push({joint:p.joint,first:off,count:p.nf*3,color:partColor(p.joint)});
+    off+=p.nf*3;
+  }
+  lineBuf=gl.createBuffer();
+  gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  return true;
+}
+function glLines(v,color,alpha,mvp){
+  gl.bindVertexArray(null);
+  gl.bindBuffer(gl.ARRAY_BUFFER,lineBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(v),gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+  gl.uniformMatrix4fv(U.uMVP,false,mvp); gl.uniformMatrix4fv(U.uModel,false,IDENT);
+  gl.uniform3fv(U.uColor,color); gl.uniform1f(U.uAlpha,alpha); gl.uniform1i(U.uLit,0);
+  gl.drawArrays(gl.LINES,0,v.length/3);
+}
+const HOME={az:-0.72,el:0.26,d:135};
+let cam={...HOME,pan:[0,0,0]};
+const opt={mesh:true,skel:false,trail:true,follow:true};
+let W=0,H=0,VP=null,camR=[1,0,0],camU=[0,0,1];
+const FOV=0.72;
+function resize(){
+  const r=view.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
+  W=r.width;H=r.height;
+  for(const el of[cv2,glc]){el.width=Math.round(W*dpr);el.height=Math.round(H*dpr);}
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(gl)gl.viewport(0,0,glc.width,glc.height);
+}
+function buildCam(c0){
+  const center=add3(c0,cam.pan),ce=Math.cos(cam.el),se=Math.sin(cam.el);
+  const eye=add3(center,[cam.d*ce*Math.cos(cam.az),cam.d*ce*Math.sin(cam.az),cam.d*se]);
+  const fwd=nrm3(sub3(center,eye));
+  camR=nrm3(crs3(fwd,[0,0,1])); camU=crs3(camR,fwd);
+  VP=m4mul(m4persp(FOV,W/H,4,1400),m4look(eye,center,[0,0,1]));
+}
+function proj(p){
+  const x=VP[0]*p[0]+VP[4]*p[1]+VP[8]*p[2]+VP[12];
+  const y=VP[1]*p[0]+VP[5]*p[1]+VP[9]*p[2]+VP[13];
+  const w=VP[3]*p[0]+VP[7]*p[1]+VP[11]*p[2]+VP[15];
+  if(w<=0.001)return null;
+  return [(x/w*.5+.5)*W,(.5-y/w*.5)*H];
+}
+const FOOTPOLY={L:[[1.24,7.12,-9.585],[1.24,-9.66,-9.585],
+                   [-3.70,-9.66,-9.585],[-3.70,7.12,-9.585]],
+                R:[[-1.24,7.12,-9.585],[-1.24,-9.66,-9.585],
+                   [3.70,-9.66,-9.585],[3.70,7.12,-9.585]]};
+let camFollow=[0,0,16];
+function draw(dt){
+  const {P,M}=worldFK();
+  const rootV=[S.pel[0]*100,S.pel[1]*100,S.pel[2]*100];
+  const tgt=opt.follow?[rootV[0],rootV[1],16]:[0,0,16];
+  const k=Math.min(1,dt*4.5);
+  camFollow=[camFollow[0]+(tgt[0]-camFollow[0])*k,camFollow[1]+(tgt[1]-camFollow[1])*k,16];
+  buildCam(camFollow);
+  if(gl){
+    gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(prog);
+    const g=20,ext=11,cx=Math.round(camFollow[0]/g)*g,cy=Math.round(camFollow[1]/g)*g,L=[];
+    for(let i=-ext;i<=ext;i++){
+      L.push(cx+i*g,cy-ext*g,0, cx+i*g,cy+ext*g,0);
+      L.push(cx-ext*g,cy+i*g,0, cx+ext*g,cy+i*g,0);
+    }
+    gl.depthMask(false); glLines(L,[.16,.18,.24],1,VP);
+    if(opt.trail&&S.prints.length){
+      const F=[];
+      for(const pr of S.prints){
+        const c=Math.cos(pr.pose[2]),s=Math.sin(pr.pose[2]);
+        const poly=FOOTPOLY[pr.side].map(v=>{
+          const rx=-v[1],ry=v[0];
+          return [pr.pose[0]*100+c*rx-s*ry, pr.pose[1]*100+s*rx+c*ry, 0.05];});
+        for(let i=0;i<4;i++){const a=poly[i],b=poly[(i+1)%4];
+          F.push(a[0],a[1],a[2],b[0],b[1],b[2]);}
+      }
+      glLines(F,[.45,.50,.62],.85,VP);
+    }
+    gl.depthMask(true);
+    if(opt.mesh){
+      gl.bindVertexArray(vao);
+      gl.uniform1i(U.uLit,1); gl.uniform1f(U.uAlpha,1);
+      const idx={}; JNAMES.forEach((n,i)=>idx[n]=i);
+      for(const p of parts){
+        const i=idx[p.joint]; if(i===undefined)continue;
+        const Mo=m4model(M[i],P[i]);
+        gl.uniformMatrix4fv(U.uModel,false,Mo);
+        gl.uniformMatrix4fv(U.uMVP,false,m4mul(VP,Mo));
+        gl.uniform3fv(U.uColor,p.color);
+        gl.drawElements(gl.TRIANGLES,p.count,gl.UNSIGNED_INT,p.first*4);
+      }
+      gl.bindVertexArray(null);
+    }
+  }
+  ctx.clearRect(0,0,W,H);
+  const cm=p=>[p[0]*100,p[1]*100,p[2]*100];
+  const seg=(a,b,col,w)=>{const A=proj(a),B=proj(b);if(!A||!B)return;
+    ctx.strokeStyle=col;ctx.lineWidth=w;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();};
+  const dot2=(p,col,r)=>{const A=proj(p);if(!A)return;
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(A[0],A[1],r,0,7);ctx.fill();};
+  if(opt.skel){
+    for(let j=1;j<JNAMES.length;j++){
+      const nm=JNAMES[j],side=nm[0];
+      const par=(j===1||j===1+CHAIN.length)?0:j-1;
+      const on=S.foot[side]&&S.foot[side].contact;
+      seg(cm(P[par]),cm(P[j]),side==='L'?'#ff8b85':'#84b0ff',on?4:2.6);
+      dot2(cm(P[j]),side==='L'?'#ff8b85':'#84b0ff',3);
+    }
+    dot2(rootV,'#fff',3.4);
+  }
+  const lbl={LS:'left swing',DS1:'double support',RS:'right swing',DS2:'double support'};
+  const nm=EDIT.mode==='edit'?curSample().name.replace(/_/g,' '):'blended';
+  document.getElementById('hud').innerHTML=
+    `<b>${nm}</b>${EDIT.mode==='edit'&&isEdited(curSample())?' <span style="color:#c9a0ff">edited</span>':''}`+
+    `<br>${lbl[S.contact]} &middot; φ = ${S.phi.toFixed(3)} &middot; T = ${S.B.T.toFixed(2)} s`;
+}
+
+/* ===================== Fig. 9 widget (blend tab) ===================== */
+const fig=document.getElementById('fig'),fx=fig.getContext('2d');
+function drawFig(){
+  if(EDIT.mode!=='blend')return;
+  const r=fig.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
+  fig.width=r.width*dpr; fig.height=r.height*dpr; fx.setTransform(dpr,0,0,dpr,0,0);
+  const w=r.width,h=r.height; fx.clearRect(0,0,w,h);
+  const B=S.info; if(!B)return;
+  const x0=14,x1=w*0.46,ym=h*0.5;
+  fx.strokeStyle='#2f3646';fx.lineWidth=1;
+  fx.beginPath();fx.moveTo(x0,ym);fx.lineTo(x1,ym);fx.stroke();
+  FRV.forEach((v,i)=>{
+    const px=x0+(v-FRV[0])/(FRV[4]-FRV[0])*(x1-x0);
+    fx.fillStyle=S.wts.get(FR[i])>1e-3?'#6ea8fe':'#39405a';
+    fx.beginPath();fx.arc(px,ym,S.wts.get(FR[i])>1e-3?4:3,0,7);fx.fill();
+  });
+  const cx=x0+(clamp(S.cmd[0],FRV[0],FRV[4])-FRV[0])/(FRV[4]-FRV[0])*(x1-x0);
+  fx.fillStyle='#fff';fx.beginPath();
+  fx.moveTo(cx,ym-9);fx.lineTo(cx+5,ym);fx.lineTo(cx,ym+9);fx.lineTo(cx-5,ym);
+  fx.closePath();fx.fill();
+  fx.fillStyle='#828a9c';fx.font='9px ui-sans-serif';
+  fx.fillText('1)  ẋ',x0-2,13);
+  const ox=w*0.74,oy=h*0.5,R=Math.min(w*0.20,h*0.34);
+  fx.strokeStyle='#2f3646';fx.beginPath();fx.arc(ox,oy,R,0,7);fx.stroke();
+  fx.beginPath();fx.moveTo(ox-R,oy);fx.lineTo(ox+R,oy);
+  fx.moveTo(ox,oy-R);fx.lineTo(ox,oy+R);fx.stroke();
+  TSB.forEach((b,i)=>{
+    const px=ox+Math.cos(b)*R,py=oy-Math.sin(b)*R;
+    fx.fillStyle=S.wts.get(TS[i])>1e-3?'#6ea8fe':'#39405a';
+    fx.beginPath();fx.arc(px,py,S.wts.get(TS[i])>1e-3?4:3,0,7);fx.fill();
+  });
+  const px=ox+Math.cos(B.beta)*B.rho*R, py=oy-Math.sin(B.beta)*B.rho*R;
+  fx.strokeStyle='#ffffff55';fx.beginPath();fx.moveTo(ox,oy);fx.lineTo(px,py);fx.stroke();
+  fx.fillStyle='#fff';fx.beginPath();
+  fx.moveTo(px,py-6);fx.lineTo(px+4,py);fx.lineTo(px,py+6);fx.lineTo(px-4,py);
+  fx.closePath();fx.fill();
+  fx.fillStyle='#a8c4f0';fx.font='9px ui-sans-serif';
+  fx.fillText('3)  α turn-strafe = '+B.aTS.toFixed(2),x0-2,h-4);
+}
+
+/* ===================== curve editor canvas ===================== */
+const cvc=document.getElementById('cv'), cx2=cvc.getContext('2d');
+let CVRANGE=null;
+const PAD={l:38,r:12,t:12,b:20};
+function curveMeta(){ return CURVE_META[EDIT.curve.split('.')[0]]; }
+function cvGeom(){
+  const r=cvc.getBoundingClientRect();
+  return {w:r.width,h:r.height,
+          x2p:x=>PAD.l+x*(r.width-PAD.l-PAD.r),
+          p2x:p=>(p-PAD.l)/(r.width-PAD.l-PAD.r),
+          y2p:y=>{const[a,b]=CVRANGE;return PAD.t+(b-y)/(b-a)*(r.height-PAD.t-PAD.b);},
+          p2y:p=>{const[a,b]=CVRANGE;return b-(p-PAD.t)/(r.height-PAD.t-PAD.b)*(b-a);}};
+}
+function setRange(cp,sc){
+  let lo=Math.min(0,...cp.v)*sc, hi=Math.max(0,...cp.v)*sc;
+  if(hi-lo<1e-6){lo-=1;hi+=1;}
+  const m=(hi-lo)*0.22; CVRANGE=[lo-m,hi+m];
+}
+function drawCurve(){
+  const s=curSample(), key=EDIT.curve, meta=curveMeta();
+  const cp=curveCP(s,key), sc=meta.scale;
+  if(!CVRANGE||EDIT._rangeKey!==key+s.name){setRange(cp,sc);EDIT._rangeKey=key+s.name;}
+  else{ // grow if an edit pushed outside
+    const lo=Math.min(0,...cp.v)*sc, hi=Math.max(0,...cp.v)*sc;
+    if(lo<CVRANGE[0]||hi>CVRANGE[1])setRange(cp,sc);
+  }
+  const dpr=Math.min(devicePixelRatio||1,2), r=cvc.getBoundingClientRect();
+  cvc.width=r.width*dpr; cvc.height=r.height*dpr; cx2.setTransform(dpr,0,0,dpr,0,0);
+  const G=cvGeom();
+  cx2.clearRect(0,0,G.w,G.h);
+  // zero line + axes
+  cx2.strokeStyle='#2a3040';cx2.lineWidth=1;
+  cx2.beginPath();cx2.moveTo(PAD.l,G.y2p(0));cx2.lineTo(G.w-PAD.r,G.y2p(0));cx2.stroke();
+  cx2.fillStyle='#5a6270';cx2.font='9px ui-sans-serif';
+  cx2.fillText(CVRANGE[1].toFixed(1),3,PAD.t+7);
+  cx2.fillText(CVRANGE[0].toFixed(1),3,G.h-PAD.b+3);
+  cx2.fillText(meta.unit,3,G.h-4);
+  const isPel=key.startsWith('pelvis');
+  cx2.fillText(isPel?'cycle (0 → T)':'swing interval (LO → TD)',PAD.l,G.h-4);
+  // curve
+  const iv=curveInterval(s.args,key.split('.')[0],key.split('.')[1]||'L');
+  const f=hermite(fromNorm(cp,0,1,isPel));
+  cx2.strokeStyle='#6ea8fe';cx2.lineWidth=2;cx2.beginPath();
+  for(let i=0;i<=200;i++){
+    const x=i/200, y=f(x)*sc;
+    const px=G.x2p(x),py=G.y2p(y);
+    i?cx2.lineTo(px,py):cx2.moveTo(px,py);
+  }
+  cx2.stroke();
+  // tangent handles + knots
+  const HX=0.09;
+  for(let i=0;i<cp.x.length;i++){
+    const px=G.x2p(cp.x[i]),py=G.y2p(cp.v[i]*sc);
+    const hx=cp.x[i]+ (i===cp.x.length-1?-HX:HX);
+    const hy=(cp.v[i]+cp.m[i]*(hx-cp.x[i]))*sc;
+    cx2.strokeStyle='#4a5570';cx2.lineWidth=1;
+    cx2.beginPath();cx2.moveTo(px,py);cx2.lineTo(G.x2p(hx),G.y2p(hy));cx2.stroke();
+    cx2.fillStyle='#4a5570';
+    cx2.beginPath();cx2.arc(G.x2p(hx),G.y2p(hy),3,0,7);cx2.fill();
+    const locked=knotLock(key,i,cp.x.length);
+    cx2.fillStyle=locked?'#5a6270':'#c9a0ff';
+    cx2.beginPath();cx2.arc(px,py,locked?3.5:5,0,7);cx2.fill();
+    if(locked){cx2.strokeStyle='#8892a4';cx2.lineWidth=1;
+      cx2.beginPath();cx2.arc(px,py,5,0,7);cx2.stroke();}
+  }
+}
+/* which knots may not move vertically -- this is what keeps the contact
+   constraint intact through an edit */
+function knotLock(key,i,n){
+  const meta=CURVE_META[key.split('.')[0]];
+  if(meta.lock==='both')return i===0||i===n-1;
+  if(meta.lock==='end')return i>=n-2;          // psi_toe: relaxes to 0
+  if(meta.lock==='start')return i<=n-2;        // psi_heel: starts at 0
+  return false;                                 // periodic handled on drag
+}
+function cvPick(ev){
+  const r=cvc.getBoundingClientRect(), G=cvGeom();
+  const mx=ev.clientX-r.left, my=ev.clientY-r.top;
+  const s=curSample(), cp=curveCP(s,EDIT.curve), sc=curveMeta().scale, HX=0.09;
+  let best=null,bd=14;
+  for(let i=0;i<cp.x.length;i++){
+    const hx=cp.x[i]+(i===cp.x.length-1?-HX:HX);
+    const hy=(cp.v[i]+cp.m[i]*(hx-cp.x[i]))*sc;
+    let d=Math.hypot(G.x2p(hx)-mx,G.y2p(hy)-my);
+    if(d<bd){bd=d;best={i,kind:'tan'};}
+    d=Math.hypot(G.x2p(cp.x[i])-mx,G.y2p(cp.v[i]*sc)-my);
+    if(d<bd){bd=d;best={i,kind:'knot'};}
+  }
+  return best;
+}
+cvc.addEventListener('pointerdown',e=>{
+  const p=cvPick(e); if(!p)return;
+  EDIT.drag=p; cvc.setPointerCapture(e.pointerId); e.preventDefault();
+});
+cvc.addEventListener('pointermove',e=>{
+  if(!EDIT.drag)return;
+  const r=cvc.getBoundingClientRect(), G=cvGeom();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  const s=curSample(), key=EDIT.curve, meta=curveMeta(), sc=meta.scale;
+  const cp=curveCP(s,key), i=EDIT.drag.i, n=cp.x.length;
+  const yv=G.p2y(my)/sc, xv=clamp(G.p2x(mx),0,1);
+  if(EDIT.drag.kind==='tan'){
+    const dx=(i===n-1?-0.09:0.09);
+    cp.m[i]=(yv-cp.v[i])/dx;
+    if(meta.lock==='periodic'&&(i===0||i===n-1)){cp.m[0]=cp.m[i];cp.m[n-1]=cp.m[i];}
+  }else{
+    if(!knotLock(key,i,n)){
+      let v=yv;
+      if(meta.sign===+1)v=Math.max(0,v);
+      if(meta.sign===-1)v=Math.min(0,v);
+      cp.v[i]=v;
+      if(meta.lock==='periodic'&&(i===0||i===n-1)){cp.v[0]=v;cp.v[n-1]=v;}
+    }
+    if(i>0&&i<n-1)
+      cp.x[i]=clamp(xv,cp.x[i-1]+0.02,cp.x[i+1]-0.02);
+  }
+  setCurveCP(s,key,cp);
+  drawCurve(); panel();
+});
+addEventListener('pointerup',()=>{EDIT.drag=null;});
+
+/* ===================== side panel ===================== */
+function buildSamples(){
+  const el=document.getElementById('samples'); el.innerHTML='';
+  SAMPLES.forEach((s,i)=>{
+    const d=document.createElement('div');
+    d.className='smp'+(i===EDIT.sel?' on':'');
+    const v=s.vel;
+    const lbl=v[0]?`ẋ ${v[0]>0?'+':''}${v[0]}`:v[1]?`ẏ ${v[1]>0?'+':''}${v[1]}`:
+              v[2]?`θ̇ ${v[2]>0?'+':''}${v[2]}`:'0';
+    d.innerHTML=`<span>${isEdited(s)?'<span class="dot">•</span> ':''}`+
+                `${s.name.replace(/_/g,' ')}</span><small>${lbl}</small>`;
+    d.onclick=()=>{EDIT.sel=i;selectSample();};
+    el.appendChild(d);
+  });
+}
+function buildAttrs(){
+  const s=curSample(), el=document.getElementById('attrs'); el.innerHTML='';
+  for(const [k,label,lo,hi,step,unit,scale] of ATTRS){
+    const row=document.createElement('div');
+    const mod=Math.abs(s.args[k]-s.baseArgs[k])>1e-12;
+    row.className='arow'+(mod?' mod':'');
+    row.innerHTML=`<label title="click to reset">${label}</label>`+
+      `<input type="range" min="${lo}" max="${hi}" step="${step}" value="${s.args[k]}">`+
+      `<span>${(s.args[k]*scale).toFixed(unit==='of T'?3:2)} ${unit}</span>`;
+    const inp=row.querySelector('input');
+    inp.oninput=()=>{setAttr(s,k,+inp.value);
+      row.querySelector('span').textContent=
+        (s.args[k]*scale).toFixed(unit==='of T'?3:2)+' '+unit;
+      row.classList.toggle('mod',Math.abs(s.args[k]-s.baseArgs[k])>1e-12);
+      afterEdit();};
+    row.querySelector('label').onclick=()=>{setAttr(s,k,s.baseArgs[k]);buildAttrs();afterEdit();};
+    el.appendChild(row);
+  }
+}
+function buildCurveSel(){
+  const sel=document.getElementById('curveSel'); sel.innerHTML='';
+  for(const [k,label] of CURVE_LIST){
+    const o=document.createElement('option');
+    o.value=k; o.textContent=label+(EDIT.ov[curSample().name]?.curves?.[k]?'  •':'');
+    sel.appendChild(o);
+  }
+  sel.value=EDIT.curve;
+  sel.onchange=()=>{EDIT.curve=sel.value;CVRANGE=null;drawCurve();};
+}
+function afterEdit(){
+  buildSamples(); buildCurveSel(); drawCurve();
+  const n=Object.values(EDIT.ov).filter(o=>Object.keys(o.attrs).length||Object.keys(o.curves).length).length;
+  document.getElementById('editcount').querySelector('span').innerHTML=
+    n?`<span class="ed">${n} sample${n>1?'s':''}</span>`:'none';
+  const bad=validate(curSample());
+  document.getElementById('invalid').innerHTML=
+    bad.length?`<div class="bad">${bad.join('<br>')}</div>`:'';
+}
+function selectSample(){
+  const s=curSample();
+  if(EDIT.mode==='edit'){S.force=s;S.tgt=s.vel.slice();S.cmd=s.vel.slice();resetState();S.force=s;}
+  buildSamples(); buildAttrs(); buildCurveSel(); CVRANGE=null; drawCurve(); afterEdit();
+}
+function setMode(m){
+  EDIT.mode=m;
+  document.getElementById('tabEdit').classList.toggle('on',m==='edit');
+  document.getElementById('tabBlend').classList.toggle('on',m==='blend');
+  document.getElementById('editPane').classList.toggle('hidden',m!=='edit');
+  document.getElementById('blendPane').classList.toggle('hidden',m!=='blend');
+  document.getElementById('modehint').innerHTML = m==='edit'
+    ? 'Editing one sample at its own velocity.<br>Every change re-runs the planner and the IK.'
+    : '<b style="color:var(--txt)">W/S</b> fwd &middot; <b style="color:var(--txt)">A/D</b> strafe &middot; '+
+      '<b style="color:var(--txt)">Q/E</b> turn &middot; gamepad sticks<br>Blending the edited samples.';
+  if(m==='edit'){const s=curSample();S.force=s;S.tgt=s.vel.slice();S.cmd=s.vel.slice();}
+  else{S.force=null;S.tgt=[0,0,0];}
+  resetState(); if(m==='edit')S.force=curSample();
+  if(m==='blend')S.force=null;
+}
+function panel(){
+  const cl=S.clearance*1000, clm=S.clearMin*1000, ik=S.ikErr*1000,
+        ikx=S.ikMax*1000, sl=S.slipMax*1000;
+  document.getElementById('diag').innerHTML=
+   `<div class="kv"><b>swing clearance</b><span class="${clm<-0.5?'wr':'ok'}">${cl.toFixed(2)} mm (min ${clm.toFixed(2)})</span></div>
+    <div class="kv"><b>planted-foot slip</b><span class="${sl>1?'wr':'ok'}">${sl.toFixed(3)} mm/frame</span></div>
+    <div class="kv"><b>IK residual</b><span class="${ikx>1?'wr':'ok'}">${ik.toFixed(3)} mm (peak ${ikx.toFixed(3)})</span></div>
+    ${ikx>1?'<div class="kv"><b></b><span class="wr" style="font-size:10.5px">this edit asks for a foot pose the legs cannot reach</span></div>':''}`;
+  if(EDIT.mode==='blend'){
+    const c=S.cmd,a=S.measured,f=(x,n=2)=>(x>=0?'+':'')+x.toFixed(n);
+    document.getElementById('cmd').innerHTML=
+     `<div class="kv"><b>ẋ forward</b><span>${f(c[0])} → <span class="ok">${f(a[0])}</span> m/s</span></div>
+      <div class="kv"><b>ẏ lateral</b><span>${f(c[1])} → <span class="ok">${f(a[1])}</span> m/s</span></div>
+      <div class="kv"><b>θ̇ turn</b><span>${f(c[2])} → <span class="ok">${f(a[2])}</span> rad/s</span></div>`;
+    let h='';
+    for(const s of SAMPLES){
+      const q=S.wts.get(s)||0;
+      h+=`<div class="wrow${q<1e-3?' z':''}"><span>${isEdited(s)?'<span class="ed">•</span> ':''}${s.name.replace(/_/g,' ')}</span>
+          <div class="bar"><i style="width:${(q*100).toFixed(1)}%"></i></div>
+          <span>${q<1e-3?'':(q*100).toFixed(0)+'%'}</span></div>`;
+    }
+    document.getElementById('wts').innerHTML=h;
+  }
+  let j='';
+  for(const side of['L','R'])for(let k=0;k<CHAIN.length;k++){
+    const ang=S.q[side][k]*180/Math.PI;
+    const lim=LEGS[side].lim[k].map(v=>v*180/Math.PI);
+    const u=ang>0?ang/lim[1]:(ang<0?ang/lim[0]:0);
+    const half=ang/(ang>0?lim[1]:-lim[0])*50;
+    const col=u>0.9?'var(--warn)':(side==='L'?'var(--l)':'var(--r)');
+    j+=`<div class="jrow"><span style="color:var(--dim)">${side}_${CHAIN[k]}</span>
+        <div class="bar"><u></u><i style="left:${ang<0?50+half:50}%;
+        width:${Math.min(Math.abs(half),50)}%;background:${col}"></i></div>
+        <span>${ang.toFixed(1)}°</span></div>`;
+  }
+  document.getElementById('jnts').innerHTML=j;
+}
+
+/* ===================== input ===================== */
+const keys=new Set();
+let shift=false;
+function setFast(v){IN.fast=v;document.getElementById('tFast').classList.toggle('on',v);}
+function padStop(){if(EDIT.mode==='blend')S.tgt=[0,0,0];}
+function padReset(){resetState();camFollow=[0,0,16];if(EDIT.mode==='edit')S.force=curSample();}
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
+  if(e.key==='Shift')shift=true;
+  const k=e.key.toLowerCase();
+  if(k===' '){e.preventDefault();padStop();return;}
+  if(k==='r'){cam={...HOME,pan:[0,0,0]};return;}
+  if('wasdqe'.includes(k)){keys.add(k);e.preventDefault();}
+});
+addEventListener('keyup',e=>{
+  if(e.key==='Shift')shift=false;
+  keys.delete(e.key.toLowerCase());
+});
+addEventListener('blur',()=>keys.clear());
+let drag=null;
+view.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,s:e.shiftKey};
+  view.setPointerCapture(e.pointerId);view.classList.add('drag');});
+view.addEventListener('pointermove',e=>{if(!drag)return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
+  if(drag.s){const k=2*cam.d*Math.tan(FOV/2)/H;
+    cam.pan=sub3(cam.pan,add3([camR[0]*dx*k,camR[1]*dx*k,camR[2]*dx*k],
+                              [camU[0]*-dy*k,camU[1]*-dy*k,camU[2]*-dy*k]));}
+  else{cam.az-=dx*0.008;cam.el=clamp(cam.el+dy*0.006,-0.35,1.45);}});
+addEventListener('pointerup',()=>{drag=null;view.classList.remove('drag');});
+view.addEventListener('wheel',e=>{e.preventDefault();
+  cam.d=clamp(cam.d*(1+Math.sign(e.deltaY)*0.09),28,600);},{passive:false});
+for(const[id,key]of[['tMesh','mesh'],['tSkel','skel'],['tTrail','trail'],['tFollow','follow']])
+  document.getElementById(id).onclick=ev=>{opt[key]=!opt[key];
+    ev.target.classList.toggle('on',opt[key]);};
+document.getElementById('tReset').onclick=()=>{cam={...HOME,pan:[0,0,0]};camFollow=[0,0,16];};
+document.getElementById('tFast').onclick=()=>setFast(!IN.fast);
+document.getElementById('tabEdit').onclick=()=>{setMode('edit');selectSample();};
+document.getElementById('tabBlend').onclick=()=>{setMode('blend');};
+document.getElementById('aExport').onclick=exportOverrides;
+document.getElementById('aResetCurve').onclick=()=>{
+  resetCurve(curSample(),EDIT.curve);CVRANGE=null;afterEdit();};
+document.getElementById('bResetSample').onclick=()=>{
+  resetSample(curSample());buildAttrs();CVRANGE=null;afterEdit();};
+document.getElementById('bImport').onclick=()=>document.getElementById('fImport').click();
+document.getElementById('fImport').onchange=async ev=>{
+  const f=ev.target.files[0]; if(!f)return;
+  try{importOverrides(await f.text());buildAttrs();CVRANGE=null;afterEdit();
+      alert('overrides loaded');}
+  catch(err){alert('could not load: '+err.message);}
+  ev.target.value='';
+};
+addEventListener('resize',()=>{resize();drawCurve();});
+
+/* ===================== loop ===================== */
+let last=performance.now(),accP=0;
+function tick(now){
+  let dt=Math.min((now-last)/1000,0.05); last=now;
+  if(EDIT.mode==='blend'){S.tgt=inputCommand(shift);}
+  else{pollPad();const s=curSample();S.tgt=s.vel.slice();S.cmd=s.vel.slice();S.force=s;}
+  stepSim(dt);
+  draw(dt);
+  accP+=dt; if(accP>0.06){accP=0;panel();drawFig();drawPad();}
+  requestAnimationFrame(tick);
+}
+try{initGL();}catch(e){console.error(e);
+  document.getElementById('err').style.display='flex';
+  opt.mesh=false;opt.skel=true;
+  document.getElementById('tMesh').classList.remove('on');
+  document.getElementById('tSkel').classList.add('on');}
+resize(); setMode('edit'); selectSample(); panel(); drawPad();
+requestAnimationFrame(tick);
+</script></body></html>

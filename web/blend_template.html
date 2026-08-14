@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>QMini interactive gait blending</title>
+<style>
+ :root{--bg:#12141a;--panel:#1a1d26;--line:#2a2f3d;--txt:#d7dbe4;--dim:#828a9c;
+       --acc:#6ea8fe;--l:#e0655f;--r:#5b8ff9;--warn:#e0a458;--ok:#4bbf87}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--txt);overflow:hidden;
+      font:13px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+ #wrap{display:flex;height:100vh}
+ #left{flex:1;display:flex;flex-direction:column;min-width:0}
+ #view{flex:1;position:relative;min-height:0;cursor:grab}
+ #view.drag{cursor:grabbing}
+ #gl,#c{position:absolute;inset:0;width:100%;height:100%;display:block}
+ #c{pointer-events:none}
+ #side{width:320px;background:var(--panel);border-left:1px solid var(--line);
+       overflow-y:auto;padding:14px}
+ h1{font-size:14px;margin:0 0 2px;font-weight:600}
+ .sub{color:var(--dim);font-size:11px;margin-bottom:12px}
+ h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
+    margin:15px 0 7px;font-weight:600}
+ .kv{display:flex;justify-content:space-between;padding:2px 0;font-size:12px}
+ .kv b{font-weight:500;color:var(--dim)}
+ .kv span{font-variant-numeric:tabular-nums}
+ .wrow{display:grid;grid-template-columns:88px 1fr 38px;gap:6px;align-items:center;
+       margin:2.5px 0;font-size:11px}
+ .wrow span:last-child{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+ .wrow.z{opacity:.35}
+ .bar{height:13px;background:#222634;border-radius:3px;position:relative;overflow:hidden}
+ .bar i{position:absolute;top:0;bottom:0;left:0;background:var(--acc);opacity:.9}
+ .bar u{position:absolute;top:0;bottom:0;width:1px;background:#4a5266;left:50%}
+ .jrow{display:grid;grid-template-columns:60px 1fr 44px;gap:6px;align-items:center;
+       margin:2.5px 0;font-size:10.5px}
+ .jrow span:last-child{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+ #fig{width:100%;height:126px;display:block;background:#161922;border-radius:6px}
+ #bottom{height:88px;background:var(--panel);border-top:1px solid var(--line);
+         padding:10px 14px;flex:none;display:flex;align-items:center;gap:16px}
+ .keys{display:grid;grid-template-columns:repeat(3,26px);grid-auto-rows:26px;gap:3px}
+ .key{background:#222634;border:1px solid var(--line);border-radius:4px;display:flex;
+      align-items:center;justify-content:center;font-size:11px;color:var(--dim)}
+ .key.on{background:var(--acc);border-color:var(--acc);color:#0e1017;font-weight:600}
+ .key.sp{grid-column:span 3;width:auto}
+ button{background:#262b39;color:var(--txt);border:1px solid var(--line);border-radius:5px;
+        padding:4px 11px;cursor:pointer;font:inherit;font-size:12px}
+ button:hover{background:#303648}
+ button.on{background:var(--acc);border-color:var(--acc);color:#0e1017}
+ .tog{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto}
+ .hint{color:var(--dim);font-size:10.5px;margin-top:10px;line-height:1.45}
+ #hud{position:absolute;left:14px;top:11px;font-size:11px;color:var(--dim);
+      pointer-events:none;line-height:1.65;z-index:4}
+ #hud b{color:var(--txt);font-weight:600;font-size:12.5px}
+ #err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+      color:var(--warn);font-size:13px;text-align:center;padding:40px;z-index:6}
+ code{color:#a8c4f0}
+</style></head><body>
+<div id="wrap">
+ <div id="left">
+  <div id="view">
+    <canvas id="gl"></canvas>
+    <canvas id="c"></canvas>
+    <div id="hud"></div>
+    <div id="err">WebGL2 unavailable &mdash; falling back to the skeleton view.</div>
+  </div>
+  <div id="bottom">
+    <div class="keys">
+      <div class="key" style="visibility:hidden"></div><div class="key" id="kW">W</div>
+      <div class="key" style="visibility:hidden"></div>
+      <div class="key" id="kA">A</div><div class="key" id="kS">S</div><div class="key" id="kD">D</div>
+      <div class="key" id="kQ">Q</div><div class="key sp" id="kSpace">space = stop</div>
+      <div class="key" id="kE">E</div>
+    </div>
+    <div style="font-size:11px;color:var(--dim);line-height:1.6">
+      <b style="color:var(--txt)">W/S</b> forward &middot; reverse&nbsp;&nbsp;
+      <b style="color:var(--txt)">A/D</b> strafe&nbsp;&nbsp;
+      <b style="color:var(--txt)">Q/E</b> turn&nbsp;&nbsp;
+      <b style="color:var(--txt)">shift</b> full speed &middot;
+      <b style="color:var(--txt)">gamepad</b> sticks + A<br>
+      Commands ramp through the blend space; the pose is interpolated from the
+      nine reference clips every frame.
+    </div>
+    <canvas id="pad" style="width:250px;height:52px;flex:none"></canvas>
+    <div class="tog">
+      <button id="tFast">Fast walk</button>
+      <button id="tMesh" class="on">Robot</button>
+      <button id="tSkel">Skeleton</button>
+      <button id="tTrail" class="on">Footprints</button>
+      <button id="tFollow" class="on">Follow</button>
+      <button id="tFB" class="on">Vel. feedback</button>
+      <button id="tReset">Reset pose</button>
+    </div>
+  </div>
+ </div>
+ <div id="side">
+  <h1>Interactive gait blending</h1>
+  <div class="sub">phase-space interpolation of the 9 Table&nbsp;3 samples</div>
+
+  <h2>Command vs achieved</h2>
+  <div id="cmd"></div>
+
+  <h2>Blend space (Fig. 9)</h2>
+  <canvas id="fig"></canvas>
+
+  <h2>Sample weights</h2>
+  <div id="wts"></div>
+
+  <h2>Blended cycle</h2>
+  <div id="cyc"></div>
+  <div class="row" style="margin-top:6px">
+    <label>η (Eq. 10)</label>
+    <input type="range" id="eta" min="0" max="100" value="50">
+    <span id="etav" style="width:34px;text-align:right;font-variant-numeric:tabular-nums">0.50</span>
+  </div>
+
+  <h2>Joint angles vs safe limit</h2>
+  <div id="jnts"></div>
+
+  <div class="hint">
+   Weights come from the paper's three-step interpolation (Eqs&nbsp;8&ndash;10):
+   nearest forward/reverse pair on &#7819;, nearest turn/strafe pair by polar
+   angle in the normalised (&#7823;<sub>n</sub>,&nbsp;&theta;&#775;<sub>n</sub>)
+   plane, then the two intermediates combined by
+   &alpha;<sub>turn-strafe</sub>.<br><br>
+   Each contributing clip is sampled at its own registered time
+   t<sub>i</sub>&nbsp;=&nbsp;&Omega;<sub>i</sub>(&phi;), so contact events always
+   line up. The root is solved from the planted foot rather than integrated from
+   the command, so <i>achieved</i> is what the blended pose actually produces.<br><br>
+   Caveat worth watching: this blends <b>poses</b>, whereas the paper blends the
+   gait <b>parameters</b> and re-runs the planner. Pose blending does not
+   preserve the contact constraint, which shows up as the swing-clearance
+   number going negative on strongly mixed commands. Velocity feedback
+   (Sec.&nbsp;7.1) closes most of the tracking gap; forward+turn together
+   saturate because &eta; deliberately attenuates the turn sample at speed.
+  </div>
+ </div>
+</div>
+<script>
+const CLIPS = __CLIPS__;
+const MESH  = __MESH__;
+__INPUT__
+
+/* ============================ math ============================ */
+const qm=q=>{const[w,x,y,z]=q;return[
+ [1-2*(y*y+z*z),2*(x*y-w*z),2*(x*z+w*y)],
+ [2*(x*y+w*z),1-2*(x*x+z*z),2*(y*z-w*x)],
+ [2*(x*z-w*y),2*(y*z+w*x),1-2*(x*x+y*y)]];};
+const mv=(m,v)=>[m[0][0]*v[0]+m[0][1]*v[1]+m[0][2]*v[2],
+                 m[1][0]*v[0]+m[1][1]*v[1]+m[1][2]*v[2],
+                 m[2][0]*v[0]+m[2][1]*v[1]+m[2][2]*v[2]];
+const mm=(a,b)=>a.map((r,i)=>b[0].map((_,j)=>r.reduce((s,_,k)=>s+a[i][k]*b[k][j],0)));
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const scl=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const crs=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const nrm=a=>{const l=Math.hypot(...a)||1;return scl(a,1/l);};
+const R2V=p=>[-p[1],p[0],p[2]];
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+const wrapPi=a=>Math.atan2(Math.sin(a),Math.cos(a));
+const rotZ=a=>{const c=Math.cos(a),s=Math.sin(a);return[[c,-s,0],[s,c,0],[0,0,1]];};
+
+function qnorm(q){const l=Math.hypot(q[0],q[1],q[2],q[3])||1;return q.map(v=>v/l);}
+function slerp(a,b,t){
+  let d=a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3], bb=b;
+  if(d<0){bb=[-b[0],-b[1],-b[2],-b[3]];d=-d;}
+  if(d>0.9995)return qnorm([a[0]+(bb[0]-a[0])*t,a[1]+(bb[1]-a[1])*t,
+                            a[2]+(bb[2]-a[2])*t,a[3]+(bb[3]-a[3])*t]);
+  const th=Math.acos(clamp(d,-1,1)),s=Math.sin(th);
+  const w1=Math.sin((1-t)*th)/s, w2=Math.sin(t*th)/s;
+  return [a[0]*w1+bb[0]*w2,a[1]*w1+bb[1]*w2,a[2]*w1+bb[2]*w2,a[3]*w1+bb[3]*w2];
+}
+/* weighted quaternion blend by incremental slerp (weights sum to 1) */
+function qblend(qs,ws){
+  let q=qs[0], acc=ws[0];
+  for(let i=1;i<qs.length;i++){
+    const w=ws[i]; if(w<=0)continue;
+    q=slerp(q,qs[i],w/(acc+w)); acc+=w;
+  }
+  return q;
+}
+/* column-major mat4 */
+function m4mul(a,b){const o=new Float32Array(16);
+ for(let c=0;c<4;c++)for(let r=0;r<4;r++){let s=0;
+  for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k]; o[c*4+r]=s;} return o;}
+function m4persp(f_,asp,zn,zf){const f=1/Math.tan(f_/2),o=new Float32Array(16);
+ o[0]=f/asp;o[5]=f;o[10]=(zf+zn)/(zn-zf);o[11]=-1;o[14]=2*zf*zn/(zn-zf);return o;}
+function m4look(eye,ctr,up){const f=nrm(sub(ctr,eye)),s=nrm(crs(f,up)),u=crs(s,f);
+ return new Float32Array([s[0],u[0],-f[0],0, s[1],u[1],-f[1],0, s[2],u[2],-f[2],0,
+   -dot(s,eye),-dot(u,eye),dot(f,eye),1]);}
+function m4model(R,t){
+ const C=[[0,-1,0],[1,0,0],[0,0,1]];
+ const M=mm(C,R), p=mv(C,t);
+ return new Float32Array([M[0][0],M[1][0],M[2][0],0, M[0][1],M[1][1],M[2][1],0,
+   M[0][2],M[1][2],M[2][2],0, p[0],p[1],p[2],1]);}
+
+/* ============ Sec. 5.1  monotone phase map Omega(phi) ============ */
+const PHI=[0,0.1,0.5,0.6,1.0];                  // fixed landmarks
+function monoSpline(xs,ys){
+  const n=xs.length,d=[],m=new Array(n);
+  for(let i=0;i<n-1;i++)d.push((ys[i+1]-ys[i])/(xs[i+1]-xs[i]));
+  m[0]=d[0]; m[n-1]=d[n-2];
+  for(let i=1;i<n-1;i++)m[i]=0.5*(d[i-1]+d[i]);
+  for(let i=0;i<n-1;i++){
+    if(d[i]===0){m[i]=0;m[i+1]=0;continue;}
+    const a=m[i]/d[i],b=m[i+1]/d[i],s=a*a+b*b;
+    if(s>9){const tau=3/Math.sqrt(s);m[i]=tau*a*d[i];m[i+1]=tau*b*d[i];}
+  }
+  const f=x=>{
+    const xc=clamp(x,xs[0],xs[n-1]);
+    let i=0; while(i<n-2&&xc>xs[i+1])i++;
+    const h=xs[i+1]-xs[i],s=(xc-xs[i])/h,s2=s*s,s3=s2*s;
+    return (2*s3-3*s2+1)*ys[i]+(s3-2*s2+s)*h*m[i]
+         +(-2*s3+3*s2)*ys[i+1]+(s3-s2)*h*m[i+1];
+  };
+  f.inv=y=>{let lo=xs[0],hi=xs[n-1];
+    for(let k=0;k<50;k++){const mid=0.5*(lo+hi); if(f(mid)<y)lo=mid;else hi=mid;}
+    return 0.5*(lo+hi);};
+  return f;
+}
+const f_soft=a=>{a=clamp(a,0,1);return a*a*(3-2*a);};   // Eq. 8
+
+/* ============ Sec. 5.3  three-step sample interpolation ============ */
+const byName={}; CLIPS.forEach(c=>byName[c.sample]=c);
+const FR=["reverse_fast","reverse_slow","step_in_place","forward_slow","forward_fast"]
+         .map(n=>byName[n]);
+const FRV=FR.map(c=>c.vel[0]);                        // ascending xdot
+const TS=["left_turn","left_strafe","right_turn","right_strafe"].map(n=>byName[n]);
+const TSB=[0,Math.PI/2,Math.PI,3*Math.PI/2];          // their polar angles
+const XMAX=Math.max(...FRV), YMAX=byName.left_strafe.vel[1],
+      THMAX=byName.left_turn.vel[2];
+let ETA=0.5;   // Eq. 10 turn/strafe attenuation gain
+
+function blendWeights(v){
+  const w=new Map(); CLIPS.forEach(c=>w.set(c,0));
+  /* step 1: nearest forward/reverse pair on xdot */
+  const x=clamp(v[0],FRV[0],FRV[FRV.length-1]);
+  let i=0; while(i<FRV.length-2&&x>FRV[i+1])i++;
+  const aFR=f_soft((x-FRV[i])/(FRV[i+1]-FRV[i]));
+  const fr=[[FR[i],1-aFR],[FR[i+1],aFR]];
+  /* step 2: nearest turn/strafe pair by polar angle */
+  const yn=YMAX?v[1]/YMAX:0, tn=THMAX?v[2]/THMAX:0;
+  const rho=Math.min(Math.hypot(yn,tn),1);
+  let beta=Math.atan2(yn,tn); if(beta<0)beta+=2*Math.PI;
+  const seg=Math.min(3,Math.floor(beta/(Math.PI/2)));
+  const aB=f_soft((beta-TSB[seg])/(Math.PI/2));
+  const ts=[[TS[seg],1-aB],[TS[(seg+1)%4],aB]];
+  /* step 3: combine (Eq. 10) */
+  const xn=XMAX?Math.abs(v[0])/XMAX:0;
+  const aTS=f_soft(rho)*(1-ETA*f_soft(xn));
+  for(const[c,q]of fr)w.set(c,w.get(c)+(1-aTS)*q);
+  for(const[c,q]of ts)w.set(c,w.get(c)+aTS*q);
+  return {w,aFR,fr:i,beta,rho,aTS,xn,yn,tn};
+}
+
+/* ============ skeleton + clip sampling ============ */
+const SKEL=CLIPS[0].joints;                    // identical across clips
+const NJ=SKEL.length;
+const ANK={L:SKEL.findIndex(j=>j.name==='L_ankle'),R:SKEL.findIndex(j=>j.name==='R_ankle')};
+const SOLE=[0,0,-9.585];
+const CORN={L:[[0.44,5.46,-9.585],[0.44,-7.42,-9.585],[-1.41,-7.42,-9.585],[-1.41,5.46,-9.585]],
+            R:[[-0.44,5.46,-9.585],[-0.44,-7.42,-9.585],[1.41,-7.42,-9.585],[1.41,5.46,-9.585]]};
+const FOOT={L:[[1.24,7.12,-9.585],[1.24,-9.66,-9.585],[-3.70,-9.66,-9.585],[-3.70,7.12,-9.585]],
+            R:[[-1.24,7.12,-9.585],[-1.24,-9.66,-9.585],[3.70,-9.66,-9.585],[3.70,7.12,-9.585]]};
+CLIPS.forEach(c=>{ c.omega=monoSpline(PHI,c.events); });
+
+function sampleClip(c,t,k){
+  const x=clamp(t,0,c.T)*c.fps;
+  let i0=Math.min(Math.floor(x),c.n-1);
+  return slerp(c.rot[i0][k],c.rot[i0+1][k],x-i0);
+}
+/* pelvis orientation with the clip's own path yaw removed, so only the
+   stylized yaw/pitch/roll survives the blend */
+function pelvisLocal(c,t){
+  const q=sampleClip(c,t,0);
+  const yaw=-c.vel[2]*t;
+  const h=yaw/2, qz=[Math.cos(h),0,0,Math.sin(h)];
+  return [qz[0]*q[0]-qz[3]*q[3], qz[0]*q[1]-qz[3]*q[2],
+          qz[0]*q[2]+qz[3]*q[1], qz[0]*q[3]+qz[3]*q[0]];
+}
+function sampleZ(c,t){
+  const x=clamp(t,0,c.T)*c.fps;
+  const i0=Math.min(Math.floor(x),c.n-1), u=x-i0;
+  return c.rootT[i0][2]*(1-u)+c.rootT[i0+1][2]*u;
+}
+/* FK with the root at the origin carrying only the stylized pelvis rotation */
+function fkLocal(Q,R0){
+  const P=[[0,0,0]],M=[R0];
+  for(let k=1;k<NJ;k++){
+    const p=SKEL[k].parent;
+    P.push(add(P[p],mv(M[p],SKEL[k].t)));
+    M.push(mm(M[p],qm(Q[k])));
+  }
+  return {P,M};
+}
+
+/* ============ live blended state ============ */
+const S={
+  phi:0, cmd:[0,0,0], tgt:[0,0,0], corr:[0,0,0], fb:true,
+  root:[0,0,0], yaw:0,
+  anchor:{L:null,R:null}, prints:[], contact:'DS2',
+  Q:null, Pl:null, Ml:null, T:1, events:PHI.slice(),
+  achieved:[0,0,0], prevRoot:[0,0,0], prevYaw:0, wts:null, info:null,
+};
+function resetPose(){
+  S.phi=0; S.cmd=[0,0,0]; S.tgt=[0,0,0]; S.root=[0,0,0]; S.yaw=0;
+  S.anchor={L:null,R:null}; S.prints=[]; S.achieved=[0,0,0]; S.corr=[0,0,0];
+  S.clear=0; S.clearMin=0;
+  step(0); S.anchor={L:null,R:null}; step(0);
+}
+function contactOf(phi){
+  return phi<PHI[1]?'LS':phi<PHI[2]?'DS1':phi<PHI[3]?'RS':'DS2';
+}
+
+function step(dt){
+  /* --- command ramp (Sec. 7.1-style rate limiting) --- */
+  const AR=[0.55,0.35,1.4];                     // m/s^2, m/s^2, rad/s^2
+  for(let i=0;i<3;i++){
+    const d=S.tgt[i]-S.cmd[i], m=AR[i]*dt;
+    S.cmd[i]+= Math.abs(d)<=m?d:Math.sign(d)*m;
+  }
+  /* --- Sec. 7.1 gait feedback -------------------------------------------
+     Pose blending does not reproduce the commanded velocity exactly for
+     directions between samples, so a slow integral term nudges the sampler
+     input until the achieved velocity matches the request.  Disable it to see
+     the raw open-loop blend. */
+  const LIM=[XMAX,YMAX,THMAX];
+  if(S.fb&&dt>0){
+    const KI=[0.35,0.35,0.35];   // well under the achieved-velocity filter bandwidth
+    for(let i=0;i<3;i++){
+      const e=S.cmd[i]-S.achieved[i];
+      S.corr[i]=clamp(S.corr[i]+KI[i]*e*dt,-0.6*LIM[i],0.6*LIM[i]);
+      if(Math.abs(S.tgt[i])<1e-6&&Math.abs(S.cmd[i])<1e-6)
+        S.corr[i]*=Math.max(0,1-2.5*dt);          // bleed off when stopped
+    }
+  }else if(!S.fb){S.corr=[0,0,0];}
+  const vin=[clamp(S.cmd[0]+S.corr[0],-XMAX,XMAX),
+             clamp(S.cmd[1]+S.corr[1],-YMAX,YMAX),
+             clamp(S.cmd[2]+S.corr[2],-THMAX,THMAX)];
+  S.vin=vin;
+  /* --- weights + blended timing --- */
+  const B=blendWeights(vin); S.wts=B.w; S.info=B;
+  const act=[...B.w.entries()].filter(([,q])=>q>1e-4).sort((a,b)=>b[1]-a[1]);
+  const ev=[0,0,0,0,0];
+  for(const[c,q]of act)for(let k=0;k<5;k++)ev[k]+=q*c.events[k];
+  S.events=ev; S.T=ev[4];
+  const OM=monoSpline(PHI,ev);
+  /* advance in gait time, then map back to phase */
+  let t=OM(S.phi)+dt; if(t>=S.T)t-=S.T*Math.floor(t/S.T);
+  S.phi=OM.inv(t);
+
+  /* --- sample every contributing clip at its own registered time --- */
+  const Q=new Array(NJ), ws=act.map(a=>a[1]);
+  for(let k=1;k<NJ;k++){
+    const qs=act.map(([c])=>sampleClip(c,c.omega(S.phi),k));
+    Q[k]=qblend(qs,ws);
+  }
+  Q[0]=qblend(act.map(([c])=>pelvisLocal(c,c.omega(S.phi))),ws);
+  let pz=0; for(const[c,q]of act)pz+=q*sampleZ(c,c.omega(S.phi));
+  S.Q=Q;
+
+  /* --- local FK --- */
+  const {P,M}=fkLocal(Q,qm(Q[0]));
+  S.Pl=P; S.Ml=M;
+
+  /* --- root from the planted foot (no sliding) --- */
+  const st=contactOf(S.phi);
+  const sole={},yawL={},low={};
+  for(const s of['L','R']){
+    const k=ANK[s];
+    sole[s]=add(P[k],mv(M[k],SOLE));
+    yawL[s]=Math.atan2(M[k][1][0],M[k][0][0]);
+    low[s]=Math.min(...CORN[s].map(c=>add(P[k],mv(M[k],c))[2]));
+  }
+  const solveFrom=s=>{
+    const A=S.anchor[s];
+    if(!A)return {yaw:S.yaw,p:[S.root[0],S.root[1],-low[s]]};
+    const yaw=A.yaw-yawL[s];
+    const r=mv(rotZ(yaw),sole[s]);
+    return {yaw,p:[A.p[0]-r[0],A.p[1]-r[1],-low[s]]};
+  };
+  let sol;
+  if(st==='LS')      sol=solveFrom('R');
+  else if(st==='RS') sol=solveFrom('L');
+  else{
+    const u=st==='DS1'?f_soft((S.phi-PHI[1])/(PHI[2]-PHI[1]))
+                      :f_soft((S.phi-PHI[3])/(PHI[4]-PHI[3]));
+    const a=st==='DS1'?solveFrom('R'):solveFrom('L');
+    const b=st==='DS1'?solveFrom('L'):solveFrom('R');
+    /* xy / yaw transfer smoothly from the trailing to the leading foot, but
+       the height must satisfy BOTH planted feet -- lerping it drives one of
+       them through the floor, so take the higher of the two requirements. */
+    sol={yaw:a.yaw+wrapPi(b.yaw-a.yaw)*u,
+         p:[a.p[0]+(b.p[0]-a.p[0])*u,a.p[1]+(b.p[1]-a.p[1])*u,
+            Math.max(a.p[2],b.p[2])]};
+  }
+  if(dt>0){
+    const inv=dt>0?1/dt:0;
+    const dv=[(sol.p[0]-S.root[0])*inv/100,(sol.p[1]-S.root[1])*inv/100,
+              wrapPi(sol.yaw-S.yaw)*inv];
+    const kk=Math.min(1,dt*3.0);
+    /* achieved velocity in body coords (robot +X=left, +Y=back) */
+    const c_=Math.cos(-sol.yaw),s_=Math.sin(-sol.yaw);
+    const bx=c_*dv[0]-s_*dv[1], by=s_*dv[0]+c_*dv[1];
+    const fwd=-by, lat=bx;
+    S.achieved=[S.achieved[0]+(fwd-S.achieved[0])*kk,
+                S.achieved[1]+(lat-S.achieved[1])*kk,
+                S.achieved[2]+(dv[2]-S.achieved[2])*kk];
+  }
+  S.root=sol.p; S.yaw=sol.yaw;
+  /* swing-foot ground clearance.  Blending poses does not respect the contact
+     constraint the way blending gait parameters does, so a swing foot can dip
+     below the floor on strongly mixed commands -- surface it instead of hiding
+     it.  Planted feet are exact by construction of the root solve. */
+  S.clear=Infinity;
+  for(const s2 of['L','R']){
+    const swing=(st==='LS'&&s2==='L')||(st==='RS'&&s2==='R');
+    if(!swing)continue;
+    const k=ANK[s2];
+    S.clear=Math.min(S.clear,sol.p[2]+Math.min(...CORN[s2].map(
+      c=>add(P[k],mv(M[k],c))[2])));
+  }
+  if(!isFinite(S.clear))S.clear=0;
+  S.clearMin=Math.min(S.clearMin===undefined?0:S.clearMin,S.clear);
+
+  /* --- anchor a foot the moment it lands --- */
+  const wasL=S.contact==='LS', wasR=S.contact==='RS';
+  const nowDS=st==='DS1'||st==='DS2';
+  for(const s of['L','R']){
+    const landed=(s==='L'&&wasL&&st==='DS1')||(s==='R'&&wasR&&st==='DS2');
+    if(landed||!S.anchor[s]){
+      const r=mv(rotZ(S.yaw),sole[s]);
+      S.anchor[s]={p:[S.root[0]+r[0],S.root[1]+r[1]],yaw:S.yaw+yawL[s]};
+      if(landed){
+        const k=ANK[s], Rw=mm(rotZ(S.yaw),M[k]);
+        const base=add(S.root,mv(rotZ(S.yaw),P[k]));
+        S.prints.push({s,pts:FOOT[s].map(c=>R2V(add(base,mv(Rw,c))))});
+        if(S.prints.length>64)S.prints.shift();
+      }
+    }
+  }
+  S.contact=st;
+}
+/* world transforms for rendering */
+function worldFK(){
+  const Rz=rotZ(S.yaw),P=[],M=[];
+  for(let k=0;k<NJ;k++){P.push(add(S.root,mv(Rz,S.Pl[k])));M.push(mm(Rz,S.Ml[k]));}
+  return {P,M};
+}
+
+/* ============ WebGL (same renderer as the reference viewer) ============ */
+const b64=s=>{const b=atob(s),u=new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u.buffer;};
+const view=document.getElementById('view');
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const glc=document.getElementById('gl');
+let gl=null,prog=null,U={},vao=null,parts=[],lineBuf=null;
+const CBASE={Root:[.62,.65,.72],L:[.82,.45,.42],R:[.40,.58,.85]};
+function partColor(j){
+  if(j==='Root')return CBASE.Root;
+  const base=j[0]==='L'?CBASE.L:CBASE.R;
+  return (j.includes('ankle')||j.includes('knee'))?base
+        :base.map((c,i)=>c*.82+CBASE.Root[i]*.18);
+}
+const IDENT=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
+function initGL(){
+  gl=glc.getContext('webgl2',{antialias:true,alpha:true});
+  if(!gl){document.getElementById('err').style.display='flex';
+          opt.mesh=false;opt.skel=true;return false;}
+  const vs=`#version 300 es
+  in vec3 aPos; uniform mat4 uMVP,uModel; out vec3 vW;
+  void main(){ vW=(uModel*vec4(aPos,1.0)).xyz; gl_Position=uMVP*vec4(aPos,1.0); }`;
+  const fs=`#version 300 es
+  precision highp float; in vec3 vW; out vec4 o;
+  uniform vec3 uColor; uniform float uAlpha; uniform int uLit;
+  void main(){
+    if(uLit==0){o=vec4(uColor,uAlpha);return;}
+    vec3 n=normalize(cross(dFdx(vW),dFdy(vW)));
+    vec3 L=normalize(vec3(0.35,0.55,0.90));
+    float d=max(dot(n,L),0.0);
+    float amb=0.30+0.16*clamp(n.z,-1.0,1.0);
+    vec3 c=uColor*(amb+0.72*d);
+    c+=vec3(0.09,0.10,0.13)*pow(1.0-abs(n.z),3.0);
+    o=vec4(c,uAlpha);
+  }`;
+  const mk=(t,s)=>{const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(sh));
+    return sh;};
+  prog=gl.createProgram();
+  gl.attachShader(prog,mk(gl.VERTEX_SHADER,vs));
+  gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,fs));
+  gl.bindAttribLocation(prog,0,'aPos'); gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(prog));
+  for(const n of['uMVP','uModel','uColor','uAlpha','uLit'])U[n]=gl.getUniformLocation(prog,n);
+  const pos=new Float32Array(b64(MESH.pos)),idx=new Uint32Array(b64(MESH.idx));
+  vao=gl.createVertexArray(); gl.bindVertexArray(vao);
+  const vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vb);
+  gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+  const ib=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,idx,gl.STATIC_DRAW);
+  gl.bindVertexArray(null);
+  let off=0;
+  for(const p of MESH.parts){
+    parts.push({joint:p.joint,first:off,count:p.nf*3,color:partColor(p.joint)});
+    off+=p.nf*3;
+  }
+  lineBuf=gl.createBuffer();
+  gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  return true;
+}
+function glLines(v,color,alpha,mvp){
+  gl.bindVertexArray(null);
+  gl.bindBuffer(gl.ARRAY_BUFFER,lineBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(v),gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,0,0);
+  gl.uniformMatrix4fv(U.uMVP,false,mvp); gl.uniformMatrix4fv(U.uModel,false,IDENT);
+  gl.uniform3fv(U.uColor,color); gl.uniform1f(U.uAlpha,alpha); gl.uniform1i(U.uLit,0);
+  gl.drawArrays(gl.LINES,0,v.length/3);
+}
+
+/* ============ camera ============ */
+const HOME={az:-0.72,el:0.26,d:135};
+let cam={...HOME,pan:[0,0,0]};
+const opt={mesh:true,skel:false,trail:true,follow:true};
+let W=0,H=0,VP=null,camR=[1,0,0],camU=[0,0,1];
+const FOV=0.72;
+function resize(){
+  const r=view.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
+  W=r.width;H=r.height;
+  for(const el of[cv,glc]){el.width=Math.round(W*dpr);el.height=Math.round(H*dpr);}
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(gl)gl.viewport(0,0,glc.width,glc.height);
+}
+function buildCam(c0){
+  const center=add(c0,cam.pan),ce=Math.cos(cam.el),se=Math.sin(cam.el);
+  const eye=add(center,[cam.d*ce*Math.cos(cam.az),cam.d*ce*Math.sin(cam.az),cam.d*se]);
+  const fwd=nrm(sub(center,eye));
+  camR=nrm(crs(fwd,[0,0,1])); camU=crs(camR,fwd);
+  VP=m4mul(m4persp(FOV,W/H,4,1400),m4look(eye,center,[0,0,1]));
+}
+function proj(p){
+  const x=VP[0]*p[0]+VP[4]*p[1]+VP[8]*p[2]+VP[12];
+  const y=VP[1]*p[0]+VP[5]*p[1]+VP[9]*p[2]+VP[13];
+  const w=VP[3]*p[0]+VP[7]*p[1]+VP[11]*p[2]+VP[15];
+  if(w<=0.001)return null;
+  return [(x/w*.5+.5)*W,(.5-y/w*.5)*H];
+}
+
+/* ============ draw ============ */
+let camFollow=[0,0,16];
+function draw(dt){
+  const {P,M}=worldFK();
+  const rootV=R2V(S.root);
+  const tgt=opt.follow?[rootV[0],rootV[1],16]:[0,0,16];
+  const k=Math.min(1,dt*4.5);
+  camFollow=[camFollow[0]+(tgt[0]-camFollow[0])*k,
+             camFollow[1]+(tgt[1]-camFollow[1])*k,16];
+  buildCam(camFollow);
+
+  if(gl){
+    gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(prog);
+    const g=20,ext=11,cx=Math.round(camFollow[0]/g)*g,cy=Math.round(camFollow[1]/g)*g,L=[];
+    for(let i=-ext;i<=ext;i++){
+      L.push(cx+i*g,cy-ext*g,0, cx+i*g,cy+ext*g,0);
+      L.push(cx-ext*g,cy+i*g,0, cx+ext*g,cy+i*g,0);
+    }
+    gl.depthMask(false); glLines(L,[.16,.18,.24],1,VP);
+    if(opt.trail&&S.prints.length){
+      const F=[];
+      for(const p of S.prints)for(let i=0;i<4;i++){
+        const a=p.pts[i],b=p.pts[(i+1)%4];F.push(a[0],a[1],.05,b[0],b[1],.05);}
+      glLines(F,[.45,.50,.62],.8,VP);
+    }
+    gl.depthMask(true);
+    if(opt.mesh){
+      gl.bindVertexArray(vao);
+      gl.uniform1i(U.uLit,1); gl.uniform1f(U.uAlpha,1);
+      const idx={}; SKEL.forEach((j,i)=>idx[j.name]=i);
+      for(const p of parts){
+        const i=idx[p.joint]; if(i===undefined)continue;
+        const Mo=m4model(M[i],P[i]);
+        gl.uniformMatrix4fv(U.uModel,false,Mo);
+        gl.uniformMatrix4fv(U.uMVP,false,m4mul(VP,Mo));
+        gl.uniform3fv(U.uColor,p.color);
+        gl.drawElements(gl.TRIANGLES,p.count,gl.UNSIGNED_INT,p.first*4);
+      }
+      gl.bindVertexArray(null);
+    }
+  }
+
+  ctx.clearRect(0,0,W,H);
+  const seg=(a,b,col,w)=>{const A=proj(a),B=proj(b);if(!A||!B)return;
+    ctx.strokeStyle=col;ctx.lineWidth=w;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();};
+  const dot2=(p,col,r)=>{const A=proj(p);if(!A)return;
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(A[0],A[1],r,0,7);ctx.fill();};
+  if(!gl){
+    const g=20,ext=8,cx=Math.round(camFollow[0]/g)*g,cy=Math.round(camFollow[1]/g)*g;
+    for(let i=-ext;i<=ext;i++){
+      seg([cx+i*g,cy-ext*g,0],[cx+i*g,cy+ext*g,0],'#232837',1);
+      seg([cx-ext*g,cy+i*g,0],[cx+ext*g,cy+i*g,0],'#232837',1);
+    }
+  }
+  if(opt.skel){
+    const on={L:S.contact!=='LS',R:S.contact!=='RS'};
+    for(let j=1;j<NJ;j++){
+      const nm=SKEL[j].name,col=nm[0]==='L'?'#ff8b85':'#84b0ff';
+      seg(R2V(P[SKEL[j].parent]),R2V(P[j]),col,on[nm[0]]?4:2.6);
+      dot2(R2V(P[j]),col,3);
+    }
+    for(const s of['L','R']){
+      const i=ANK[s],col=s==='L'?'#ff8b85':'#84b0ff';
+      seg(R2V(P[i]),R2V(add(P[i],mv(M[i],SOLE))),col,3);
+    }
+    dot2(rootV,'#fff',3.4);
+  }
+  /* command arrow on the ground */
+  const c_=Math.cos(S.yaw),s_=Math.sin(S.yaw);
+  const bodyToWorld=(fx,lx)=>{const rx=lx,ry=-fx;   // fwd/left -> robot x/y
+    return R2V([S.root[0]+c_*rx-s_*ry,S.root[1]+s_*rx+c_*ry,0.4]);};
+  if(Math.hypot(S.cmd[0],S.cmd[1])>0.01){
+    const a=R2V([S.root[0],S.root[1],0.4]);
+    const b=bodyToWorld(S.cmd[0]*90,S.cmd[1]*90);
+    seg(a,b,'#6ea8fe',2.5); dot2(b,'#6ea8fe',3.5);
+  }
+
+  const lbl={LS:'left swing',DS1:'double support',RS:'right swing',DS2:'double support'};
+  document.getElementById('hud').innerHTML=
+    `<b>blended gait</b><br>${lbl[S.contact]} &middot; &phi; = ${S.phi.toFixed(3)}
+     &middot; T = ${S.T.toFixed(2)} s`;
+}
+
+/* ============ Fig. 9 blend-space widget ============ */
+const fig=document.getElementById('fig'),fx=fig.getContext('2d');
+function drawFig(){
+  const r=fig.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
+  fig.width=r.width*dpr; fig.height=r.height*dpr; fx.setTransform(dpr,0,0,dpr,0,0);
+  const w=r.width,h=r.height; fx.clearRect(0,0,w,h);
+  const B=S.info; if(!B)return;
+  /* left: forward / reverse axis */
+  const x0=14,x1=w*0.46,ym=h*0.5;
+  fx.strokeStyle='#2f3646';fx.lineWidth=1;
+  fx.beginPath();fx.moveTo(x0,ym);fx.lineTo(x1,ym);fx.stroke();
+  FRV.forEach((v,i)=>{
+    const px=x0+(v-FRV[0])/(FRV[4]-FRV[0])*(x1-x0);
+    const act=S.wts.get(FR[i])>1e-3;
+    fx.fillStyle=act?'#6ea8fe':'#39405a';
+    fx.beginPath();fx.arc(px,ym,act?4:3,0,7);fx.fill();
+  });
+  const cx=x0+(clamp((S.vin||S.cmd)[0],FRV[0],FRV[4])-FRV[0])/(FRV[4]-FRV[0])*(x1-x0);
+  fx.fillStyle='#fff';fx.beginPath();
+  fx.moveTo(cx,ym-9);fx.lineTo(cx+5,ym);fx.lineTo(cx,ym+9);fx.lineTo(cx-5,ym);
+  fx.closePath();fx.fill();
+  fx.fillStyle='#828a9c';fx.font='9px ui-sans-serif';
+  fx.fillText('reverse',x0-2,ym+22); fx.fillText('forward',x1-32,ym+22);
+  fx.fillText('1)  ẋ',x0-2,14);
+  /* right: turn / strafe unit circle */
+  const ox=w*0.74,oy=h*0.5,R=Math.min(w*0.20,h*0.36);
+  fx.strokeStyle='#2f3646';fx.beginPath();fx.arc(ox,oy,R,0,7);fx.stroke();
+  fx.beginPath();fx.moveTo(ox-R,oy);fx.lineTo(ox+R,oy);
+  fx.moveTo(ox,oy-R);fx.lineTo(ox,oy+R);fx.stroke();
+  TSB.forEach((b,i)=>{
+    const px=ox+Math.cos(b)*R,py=oy-Math.sin(b)*R;
+    const act=S.wts.get(TS[i])>1e-3;
+    fx.fillStyle=act?'#6ea8fe':'#39405a';
+    fx.beginPath();fx.arc(px,py,act?4:3,0,7);fx.fill();
+  });
+  const px=ox+Math.cos(B.beta)*B.rho*R, py=oy-Math.sin(B.beta)*B.rho*R;
+  fx.strokeStyle='#ffffff55';fx.beginPath();fx.moveTo(ox,oy);fx.lineTo(px,py);fx.stroke();
+  fx.fillStyle='#fff';fx.beginPath();
+  fx.moveTo(px,py-6);fx.lineTo(px+4,py);fx.lineTo(px,py+6);fx.lineTo(px-4,py);
+  fx.closePath();fx.fill();
+  fx.fillStyle='#828a9c';fx.font='9px ui-sans-serif';
+  fx.fillText('2)  ẏₙ / θ̇ₙ',ox-R,14);
+  fx.fillText('θ̇+',ox+R+3,oy+3); fx.fillText('ẏ+',ox-6,oy-R-4);
+  fx.fillStyle='#a8c4f0';
+  fx.fillText('3)  α turn-strafe = '+B.aTS.toFixed(2),x0-2,h-4);
+}
+
+/* ============ panel ============ */
+function panel(){
+  const c=S.cmd,a=S.achieved;
+  const f=(x,n=2)=>(x>=0?'+':'')+x.toFixed(n);
+  document.getElementById('cmd').innerHTML=
+   `<div class="kv"><b>ẋ forward</b><span>${f(c[0])} → <span style="color:var(--ok)">${f(a[0])}</span> m/s</span></div>
+    <div class="kv"><b>ẏ lateral</b><span>${f(c[1])} → <span style="color:var(--ok)">${f(a[1])}</span> m/s</span></div>
+    <div class="kv"><b>θ̇ turn</b><span>${f(c[2])} → <span style="color:var(--ok)">${f(a[2])}</span> rad/s</span></div>
+    <div class="kv"><b>sampler input</b><span style="color:var(--dim)">${(S.vin||c).map(v=>f(v)).join(', ')}</span></div>`;
+  let h='';
+  for(const cl of CLIPS){
+    const q=S.wts.get(cl)||0;
+    h+=`<div class="wrow${q<1e-3?' z':''}"><span>${cl.sample.replace(/_/g,' ')}</span>
+        <div class="bar"><i style="width:${(q*100).toFixed(1)}%"></i></div>
+        <span>${q<1e-3?'':(q*100).toFixed(0)+'%'}</span></div>`;
+  }
+  document.getElementById('wts').innerHTML=h;
+  const ev=S.events;
+  const cl=S.clear*10, clm=S.clearMin*10;
+  document.getElementById('cyc').innerHTML=
+   `<div class="kv"><b>period T</b><span>${S.T.toFixed(3)} s</span></div>
+    <div class="kv"><b>events</b><span>${ev.slice(0,4).map(v=>v.toFixed(2)).join(' / ')}</span></div>
+    <div class="kv"><b>phase φ</b><span>${S.phi.toFixed(3)} (${S.contact})</span></div>
+    <div class="kv"><b>swing clearance</b><span style="color:${cl<-0.5?'var(--warn)':'var(--dim)'}">${cl.toFixed(1)} mm (min ${clm.toFixed(1)})</span></div>`;
+  let j='';
+  for(let k=1;k<NJ;k++){
+    const q=S.Q[k],v=[q[1],q[2],q[3]],l=Math.hypot(...v);
+    let ang=2*Math.atan2(l,q[0])*180/Math.PI; if(ang>180)ang-=360;
+    if(l>1e-9&&dot(scl(v,1/l),SKEL[k].axis)<0)ang=-ang;
+    const lim=SKEL[k].limit,u=Math.abs(ang)/lim,half=ang/lim*50;
+    const col=u>1?'var(--warn)':(SKEL[k].name[0]==='L'?'var(--l)':'var(--r)');
+    j+=`<div class="jrow"><span style="color:var(--dim)">${SKEL[k].name}</span>
+        <div class="bar"><u></u><i style="left:${ang<0?50+half:50}%;
+        width:${Math.min(Math.abs(half),50)}%;background:${col}"></i></div>
+        <span>${ang.toFixed(1)}°</span></div>`;
+  }
+  document.getElementById('jnts').innerHTML=j;
+}
+
+/* ============ input ============ */
+const keys=new Set();
+const KEYEL={w:'kW',a:'kA',s:'kS',d:'kD',q:'kQ',e:'kE'};
+addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if(k===' '){e.preventDefault();S.tgt=[0,0,0];
+    document.getElementById('kSpace').classList.add('on');
+    setTimeout(()=>document.getElementById('kSpace').classList.remove('on'),150);return;}
+  if(k==='r'){cam={...HOME,pan:[0,0,0]};return;}
+  if(KEYEL[k]){keys.add(k);document.getElementById(KEYEL[k]).classList.add('on');
+    e.preventDefault();}
+});
+addEventListener('keyup',e=>{const k=e.key.toLowerCase();
+  if(KEYEL[k]){keys.delete(k);document.getElementById(KEYEL[k]).classList.remove('on');}});
+addEventListener('blur',()=>{keys.clear();
+  for(const id of Object.values(KEYEL))document.getElementById(id).classList.remove('on');});
+function setFast(v){IN.fast=v;
+  document.getElementById('tFast').classList.toggle('on',v);}
+function padStop(){S.tgt=[0,0,0];}
+function padReset(){resetPose();camFollow=[0,0,16];}
+function readKeys(shiftHeld){ S.tgt=inputCommand(shiftHeld); }
+let shift=false;
+addEventListener('keydown',e=>{if(e.key==='Shift')shift=true;});
+addEventListener('keyup',e=>{if(e.key==='Shift')shift=false;});
+
+let drag=null;
+view.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,s:e.shiftKey};
+  view.setPointerCapture(e.pointerId);view.classList.add('drag');});
+view.addEventListener('pointermove',e=>{if(!drag)return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;
+  if(drag.s){const k=2*cam.d*Math.tan(FOV/2)/H;
+    cam.pan=sub(cam.pan,add(scl(camR,dx*k),scl(camU,-dy*k)));}
+  else{cam.az-=dx*0.008;cam.el=clamp(cam.el+dy*0.006,-0.35,1.45);}});
+addEventListener('pointerup',()=>{drag=null;view.classList.remove('drag');});
+view.addEventListener('wheel',e=>{e.preventDefault();
+  cam.d=clamp(cam.d*(1+Math.sign(e.deltaY)*0.09),28,600);},{passive:false});
+for(const[id,key]of[['tMesh','mesh'],['tSkel','skel'],['tTrail','trail'],['tFollow','follow']])
+  document.getElementById(id).onclick=ev=>{opt[key]=!opt[key];
+    ev.target.classList.toggle('on',opt[key]);};
+document.getElementById('eta').oninput=ev=>{ETA=ev.target.value/100;
+  document.getElementById('etav').textContent=ETA.toFixed(2);};
+document.getElementById('tFB').onclick=ev=>{S.fb=!S.fb;
+  ev.target.classList.toggle('on',S.fb); if(!S.fb)S.corr=[0,0,0];};
+document.getElementById('tReset').onclick=()=>{resetPose();camFollow=[0,0,16];S.clearMin=0;};
+document.getElementById('tFast').onclick=()=>setFast(!IN.fast);
+addEventListener('resize',()=>{resize();});
+
+/* ============ main loop ============ */
+let last=performance.now(),accP=0;
+function tick(now){
+  let dt=(now-last)/1000; last=now;
+  dt=Math.min(dt,0.05);
+  readKeys(shift);
+  step(dt);
+  draw(dt);
+  accP+=dt; if(accP>0.05){accP=0;panel();drawFig();drawPad();}
+  requestAnimationFrame(tick);
+}
+try{initGL();}catch(err){console.error(err);
+  document.getElementById('err').style.display='flex';
+  opt.mesh=false;opt.skel=true;
+  document.getElementById('tMesh').classList.remove('on');
+  document.getElementById('tSkel').classList.add('on');}
+resize(); resetPose(); panel(); drawFig(); drawPad(); requestAnimationFrame(tick);
+</script></body></html>
