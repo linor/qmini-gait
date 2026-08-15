@@ -9,7 +9,17 @@ Context for Claude Code. Read this before changing anything.
 (ACM TOG 2024, Disney Research / WDI R&D), for **QMini**, a BDX-like bipedal
 droid, so its gaits can drive RL training in Isaac Lab.
 
-Section and table numbers in comments refer to that paper. The mapping:
+**Read `docs/PAPERS.md` first.** Two papers are relevant and they are *not*
+interchangeable. The one above is what this code implements, and comments cite
+it constantly by section, table and equation number. The second — Grandia et
+al., *Design and Control of a Bipedal Robotic Character* (RSS 2024) — is the
+companion hardware/control paper, and **nothing here was written with reference
+to it**; it matters for the Isaac Lab side, not the generator.
+
+Both PDFs go in `docs/papers/` (see the README there). They are gitignored and
+were not part of the packaged zip.
+
+Section and table numbers in comments refer to the *first* paper. The mapping:
 
 | paper | here |
 |---|---|
@@ -150,6 +160,32 @@ tests/               see tests/README.md
 docs/GAIT_NOTES.md   the long-form design notes written during development
 ```
 
+## There is a second, different `stylized_gait`
+
+An earlier and architecturally broader implementation of the same paper exists
+in another session's output folder, also called `stylized_gait`, with modules
+this one does not have:
+
+    path_frame.py  contacts.py  gait_sampler.py  footstep_planner.py
+    preview_control.py   LIPM/DCM capture-point CoP preview (the paper's QP,
+                         solved in closed form)
+    gait_feedback.py     Sec. 7.1 in Python rather than JS
+    disturbance.py       DisturbanceSchedule + ExternalForceEstimator —
+                         feed-forward external-force anticipation
+    simulate.py          tools/seed_app/   tools/visualizer/
+
+That external-force anticipation is a stated requirement that goes **beyond the
+paper**, and this repo does not implement it. Nor does this repo have any
+CoM/CoP planner.
+
+What this repo has instead: real QMini kinematics from the USD, verified clips,
+the Blender round-trip, the browser tools, the Isaac export, and a test suite.
+
+**They are not merged, and both packages import as `stylized_gait`, so
+installing both editable will collide.** Decide deliberately which is the trunk
+before building further. Do not assume this one is, just because it is the one
+in front of you.
+
 ## Open threads
 
 1. Run the pxr path (above). Highest value, lowest effort.
@@ -159,6 +195,8 @@ docs/GAIT_NOTES.md   the long-form design notes written during development
    deferred this deliberately ("worry about the html visualizers and editors
    later"), so confirm before starting.
 4. Optionally widen `SAFE_LIMITS_DEG` to the true per-side limits.
+5. Reconcile with the other `stylized_gait` (above) — in particular whether the
+   CoP preview and disturbance anticipation should be ported across.
 
 ## Working agreements
 

@@ -3,6 +3,15 @@ import os
 
 from stylized_gait import paths
 
+
+def _asset(name):
+    """web sources live in web/, generated data in data/"""
+    for d in (paths.WEB, paths.DATA, paths.DIST):
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return p
+    raise FileNotFoundError(f"{name} not found in web/ or data/")
+
 HERE = paths.DATA
 def R(n):
     for d in (paths.WEB, paths.DATA):

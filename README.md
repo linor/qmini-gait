@@ -74,6 +74,13 @@ The `.npz` is in the robot's own joint order with PhysX sign conventions already
 applied — see the `convention` field inside it, and the sign discussion in
 `CLAUDE.md` before touching anything about joint directions.
 
+## Papers
+
+Two are relevant and they are not interchangeable — see `docs/PAPERS.md`.
+The PDFs are **not** in this repo; drop them into `docs/papers/` following the
+README there. Comments throughout cite the first one by section and equation
+number, so having it to hand matters.
+
 ## Layout
 
 ```
@@ -83,6 +90,8 @@ web/                 JS + HTML templates → dist/
 isaac/               Isaac Lab integration
 data/                generated artefacts + the source robot USD
 tests/               see tests/README.md
+docs/PAPERS.md       the two papers and how they map onto this code
+docs/papers/         put the two PDFs here (gitignored)
 docs/GAIT_NOTES.md   long-form design notes
 CLAUDE.md            context for Claude Code — read this first
 ```

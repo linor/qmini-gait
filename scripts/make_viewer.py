@@ -10,6 +10,19 @@ import os, glob, json
 import numpy as np
 
 from stylized_gait import paths
+
+
+def R(name):
+    return open(_asset(name)).read()
+
+
+def _asset(name):
+    """web sources live in web/, generated data in data/"""
+    for d in (paths.WEB, paths.DATA, paths.DIST):
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return p
+    raise FileNotFoundError(f"{name} not found in web/ or data/")
 from stylized_gait import verify as V
 
 HERE = paths.DATA
@@ -57,7 +70,7 @@ def bake(path):
     }
 
 
-TEMPLATE = os.path.join(HERE, "viewer_template.html")
+TEMPLATE = _asset("viewer_template.html")
 
 
 def main():
