@@ -160,31 +160,32 @@ tests/               see tests/README.md
 docs/GAIT_NOTES.md   the long-form design notes written during development
 ```
 
-## There is a second, different `stylized_gait`
+## This repo is the trunk
 
-An earlier and architecturally broader implementation of the same paper exists
-in another session's output folder, also called `stylized_gait`, with modules
-this one does not have:
+Krijn confirmed it: **this package is the one to build on.** An earlier,
+architecturally broader implementation of the same paper exists in another
+session's output folder, also called `stylized_gait`. It is not being carried
+forward and should not be treated as authoritative.
 
-    path_frame.py  contacts.py  gait_sampler.py  footstep_planner.py
-    preview_control.py   LIPM/DCM capture-point CoP preview (the paper's QP,
-                         solved in closed form)
-    gait_feedback.py     Sec. 7.1 in Python rather than JS
-    disturbance.py       DisturbanceSchedule + ExternalForceEstimator —
-                         feed-forward external-force anticipation
-    simulate.py          tools/seed_app/   tools/visualizer/
+It is worth knowing what it had, because two of those things are genuine gaps
+here rather than deliberate omissions:
 
-That external-force anticipation is a stated requirement that goes **beyond the
-paper**, and this repo does not implement it. Nor does this repo have any
-CoM/CoP planner.
+- `preview_control.py` — LIPM/DCM capture-point CoP preview, standing in for the
+  paper's QP (Appendix). **This repo has no CoM/CoP planner at all.** The pelvis
+  follows the Tab. 2 curves directly. That is fine for reference animation and
+  is not a balance controller.
+- `disturbance.py` — `DisturbanceSchedule` + `ExternalForceEstimator`,
+  feed-forward external-force anticipation. Krijn's project notes call this a
+  key requirement *beyond the paper's scope*. **Not implemented here.**
 
-What this repo has instead: real QMini kinematics from the USD, verified clips,
-the Blender round-trip, the browser tools, the Isaac export, and a test suite.
+Also there: `gait_feedback.py` (Sec. 7.1 in Python; here it lives in JS, in
+`web/param_step.js`), `path_frame.py`, `contacts.py`, `gait_sampler.py`,
+`footstep_planner.py`, `simulate.py`, plus a seed app and a visualizer.
 
-**They are not merged, and both packages import as `stylized_gait`, so
-installing both editable will collide.** Decide deliberately which is the trunk
-before building further. Do not assume this one is, just because it is the one
-in front of you.
+If external-force anticipation comes back into scope, that module is worth
+reading before writing a new one — but port it onto this codebase's Π/planner
+structure rather than merging the two packages. They both import as
+`stylized_gait` and will collide if installed together.
 
 ## Open threads
 
@@ -195,8 +196,9 @@ in front of you.
    deferred this deliberately ("worry about the html visualizers and editors
    later"), so confirm before starting.
 4. Optionally widen `SAFE_LIMITS_DEG` to the true per-side limits.
-5. Reconcile with the other `stylized_gait` (above) — in particular whether the
-   CoP preview and disturbance anticipation should be ported across.
+5. External-force anticipation (`disturbance.py` in the older implementation) —
+   a stated requirement that this repo does not implement. Port onto this
+   structure if it comes back into scope.
 
 ## Working agreements
 
