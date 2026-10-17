@@ -92,6 +92,9 @@ class LibrarySample:
         self.c_psi_toe = {s: mk(f"psi_toe.{s}") for s in "LR"}
         self.c_psi_heel = {s: mk(f"psi_heel.{s}") for s in "LR"}
         self.c_pelvis_roll = mk("pelvis_roll", True)
+        # lateral pelvis sway (2026-10-17); libraries written before it: none
+        if "pelvis_y" in C:
+            self.c_pelvis_y = mk("pelvis_y", True)
         self.c_pelvis_pitch = mk("pelvis_pitch", True)
         self.c_pelvis_yaw = mk("pelvis_yaw", True)
 

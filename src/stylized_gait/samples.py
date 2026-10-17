@@ -33,10 +33,27 @@ W0 = 2 * NOMINAL_HALF_W          # 0.3170 m rest stance width
 Z0 = NOMINAL_HEIGHT              # 0.4241 m base_link height at rest
 
 
+# Applied to every sample by build() (2026-10-17, for the RL gait library):
+# PELVIS_SWAY = lateral pelvis translation toward the support foot, metres
+# (core.GaitSample.c_pelvis_y); PELVIS_ROLL_SCALE scales the authored pelvis
+# lean. Module-level rather than build() arguments so overrides.apply(), which
+# re-runs build() to recover the authored arguments, sees the same values.
+# The defaults reproduce the authored gaits exactly.
+PELVIS_SWAY = 0.0
+PELVIS_ROLL_SCALE = 1.0
+
+
 def build(y_max=Y_MAX, th_max=TH_MAX):
     S = []
 
-    S.append(GaitSample(
+    def GS(*a, **k):
+        # resolves GaitSample at call time, so overrides._authored_args' spy
+        # still sees every sample
+        k["pelvis_roll"] = k["pelvis_roll"] * PELVIS_ROLL_SCALE
+        k.setdefault("pelvis_sway", PELVIS_SWAY)
+        return GaitSample(*a, **k)
+
+    S.append(GS(
         "forward_fast", (X_MAX, 0.0, 0.0), T=0.80,
         f_ltd=0.36, f_rlo=0.50, f_rtd=0.86,
         stance_width=W0 - 0.010, stance_x_bias=0.000, stance_splay=D(0.0),
@@ -47,7 +64,7 @@ def build(y_max=Y_MAX, th_max=TH_MAX):
         swing_x_lead=0.014, swing_y_lead=0.0, foot_yaw_amp=D(0.0),
         notes="Tab. 3 Forward Fast. Longest stride, most pronounced toe-off."))
 
-    S.append(GaitSample(
+    S.append(GS(
         "forward_slow", (X_SLOW, 0.0, 0.0), T=1.00,
         f_ltd=F_LTD, f_rlo=F_RLO, f_rtd=F_RTD,
         stance_width=W0, stance_x_bias=0.000, stance_splay=D(0.0),
@@ -58,7 +75,7 @@ def build(y_max=Y_MAX, th_max=TH_MAX):
         swing_x_lead=0.008,
         notes="Tab. 3 Forward Slow."))
 
-    S.append(GaitSample(
+    S.append(GS(
         "step_in_place", (0.0, 0.0, 0.0), T=1.10,
         f_ltd=0.34, f_rlo=0.50, f_rtd=0.84,
         stance_width=W0, stance_x_bias=0.000, stance_splay=D(0.0),
@@ -68,7 +85,7 @@ def build(y_max=Y_MAX, th_max=TH_MAX):
         pelvis_roll=D(2.0), pelvis_pitch=D(0.0),
         notes="Tab. 3 Step In Place. Flat-foot contacts, no heel/toe."))
 
-    S.append(GaitSample(
+    S.append(GS(
         "reverse_slow", (-X_SLOW, 0.0, 0.0), T=1.05,
         f_ltd=F_LTD, f_rlo=F_RLO, f_rtd=F_RTD,
         stance_width=W0, stance_x_bias=-0.010, stance_splay=D(0.0),
@@ -79,7 +96,7 @@ def build(y_max=Y_MAX, th_max=TH_MAX):
         swing_x_lead=-0.006,
         notes="Tab. 3 Reverse Slow. Flat foot: no toe-off when walking backward."))
 
-    S.append(GaitSample(
+    S.append(GS(
         "reverse_fast", (-X_MAX, 0.0, 0.0), T=0.85,
         f_ltd=0.36, f_rlo=0.50, f_rtd=0.86,
         stance_width=W0, stance_x_bias=-0.020, stance_splay=D(0.0),
@@ -91,7 +108,7 @@ def build(y_max=Y_MAX, th_max=TH_MAX):
         notes="Tab. 3 Reverse Fast."))
 
     for side, sgn in (("left", +1.0), ("right", -1.0)):
-        S.append(GaitSample(
+        S.append(GS(
             f"{side}_strafe", (0.0, sgn * y_max, 0.0), T=0.78,
             f_ltd=0.34, f_rlo=0.50, f_rtd=0.84,
             stance_width=W0 + 0.006, stance_x_bias=0.0, stance_splay=D(0.0),
@@ -108,7 +125,7 @@ def build(y_max=Y_MAX, th_max=TH_MAX):
                   f"from the +/-15 deg hip roll (no ankle roll on this robot)."))
 
     for side, sgn in (("left", +1.0), ("right", -1.0)):
-        S.append(GaitSample(
+        S.append(GS(
             f"{side}_turn", (0.0, 0.0, sgn * th_max), T=1.00,
             f_ltd=F_LTD, f_rlo=F_RLO, f_rtd=F_RTD,
             # unsigned for the same reason as swing_y_lead in the strafe samples:

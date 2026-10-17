@@ -347,7 +347,7 @@ class GaitSample:
                  dt_psi_lo, dt_psi_td,
                  pelvis_z, pelvis_bounce, pelvis_roll, pelvis_pitch,
                  swing_x_lead=0.0, swing_y_lead=0.0, foot_yaw_amp=0.0,
-                 notes=""):
+                 pelvis_sway=0.0, notes=""):
         self.name = name
         self.vel = np.asarray(vel, float)          # (xdot, ydot, thetadot)
         self.T = T
@@ -432,6 +432,18 @@ class GaitSample:
         self.c_pelvis_roll = HermiteSpline(
             [self.t_llo, mid_ls, self.t_rlo, mid_rs, T],
             [0.0, +pelvis_roll, 0.0, -pelvis_roll, 0.0], periodic=True)
+        # pelvis SWAYS toward the support foot (not in the paper; added
+        # 2026-10-17): a lateral translation in the path frame, y = left, so
+        # during the left swing (right foot supports) it moves right (-y).
+        # With pelvis_roll alone the reference never shifts the weight; the
+        # RL policy did it by rocking the whole robot on its laterally rounded
+        # soles (~6-8 deg body roll). Translating the pelvis instead tilts both
+        # legs together through the hip roll joints (the soles roll, the body
+        # stays level). 0 = the authored gaits unchanged.
+        self.pelvis_sway = pelvis_sway
+        self.c_pelvis_y = HermiteSpline(
+            [self.t_llo, mid_ls, self.t_rlo, mid_rs, T],
+            [0.0, -pelvis_sway, 0.0, +pelvis_sway, 0.0], periodic=True)
         self.c_pelvis_pitch = HermiteSpline(
             [self.t_llo, mid_ls, self.t_rlo, mid_rs, T],
             [pelvis_pitch, pelvis_pitch, pelvis_pitch, pelvis_pitch, pelvis_pitch],

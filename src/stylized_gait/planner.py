@@ -262,7 +262,11 @@ def pelvis_pose_at(sample, t):
     yaw = p[2] + sample.c_pelvis_yaw(t % sample.T)
     pitch = sample.c_pelvis_pitch(t % sample.T)
     roll = sample.c_pelvis_roll(t % sample.T)
-    off = rot_z(p[2]) @ np.array([PELVIS_X_OFFSET, 0.0, 0.0])
+    # lateral sway (core.GaitSample.c_pelvis_y); samples from older libraries
+    # / editors without the curve sway 0
+    cy = getattr(sample, "c_pelvis_y", None)
+    sway = float(cy(t % sample.T)) if cy is not None else 0.0
+    off = rot_z(p[2]) @ np.array([PELVIS_X_OFFSET, sway, 0.0])
     return np.array([p[0] + off[0], p[1] + off[1], z]), rot_zyx(yaw, pitch, roll)
 
 

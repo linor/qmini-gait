@@ -35,7 +35,7 @@ ATTR_KEYS = (
     "stance_width", "stance_x_bias", "stance_splay",
     "swing_height", "psi_toe_lo", "psi_heel_td", "dt_psi_lo", "dt_psi_td",
     "pelvis_z", "pelvis_bounce", "pelvis_roll", "pelvis_pitch",
-    "swing_x_lead", "swing_y_lead", "foot_yaw_amp",
+    "swing_x_lead", "swing_y_lead", "foot_yaw_amp", "pelvis_sway",
 )
 
 # curve name -> (attribute on the sample, is it per-side?)

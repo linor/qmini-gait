@@ -12,6 +12,12 @@ from . import core as GC
 from .core import HermiteSpline
 
 
+def _ZERO(t):
+    """a zero curve, for sources without one (e.g. c_pelvis_y from a library
+    written before the sway existed)"""
+    return 0.0
+
+
 class BlendedCurve:
     """A function curve of the blended sample.  Evaluating it at a time t of the
     blended cycle means: map t -> phi with the blended phase map, map phi back
@@ -82,6 +88,7 @@ class BlendedSample:
         self.c_psi_heel = {k: C(lambda s, k=k: s.c_psi_heel[k]) for k in "LR"}
         self.c_pelvis_z = C(lambda s: s.c_pelvis_z)
         self.c_pelvis_roll = C(lambda s: s.c_pelvis_roll)
+        self.c_pelvis_y = C(lambda s: getattr(s, "c_pelvis_y", _ZERO))
         self.c_pelvis_pitch = C(lambda s: s.c_pelvis_pitch)
         self.c_pelvis_yaw = C(lambda s: s.c_pelvis_yaw)
 
