@@ -99,7 +99,11 @@ def build(y_max=Y_MAX, th_max=TH_MAX):
             dt_psi_lo=0.11, dt_psi_td=0.11,
             pelvis_z=Z0 - 0.012, pelvis_bounce=0.005,
             pelvis_roll=D(1.5), pelvis_pitch=D(0.0),
-            swing_y_lead=sgn * 0.008,
+            # NOT sgn * 0.008: GaitSample already mirrors swing_y_lead per side
+            # (+ for L, - for R), so a signed value made right_strafe the
+            # opposite of a mirror image of left_strafe (3.3 deg roll mismatch;
+            # found 2026-10-14 via the half-cycle mirror check)
+            swing_y_lead=0.008,
             notes=f"Tab. 3 {side.capitalize()} Strafe. Lateral motion comes only "
                   f"from the +/-15 deg hip roll (no ankle roll on this robot)."))
 
@@ -107,12 +111,16 @@ def build(y_max=Y_MAX, th_max=TH_MAX):
         S.append(GaitSample(
             f"{side}_turn", (0.0, 0.0, sgn * th_max), T=1.00,
             f_ltd=F_LTD, f_rlo=F_RLO, f_rtd=F_RTD,
-            stance_width=W0, stance_x_bias=0.0, stance_splay=sgn * D(3.0),
+            # unsigned for the same reason as swing_y_lead in the strafe samples:
+            # stance_splay and foot_yaw_amp are mirrored per side by GaitSample,
+            # and sgn * made the right turn toe-in where the left turn is
+            # toe-out (14 deg hip-yaw mirror mismatch; 2026-10-14)
+            stance_width=W0, stance_x_bias=0.0, stance_splay=D(3.0),
             swing_height=0.038, psi_toe_lo=D(5.0), psi_heel_td=D(-3.0),
             dt_psi_lo=0.12, dt_psi_td=0.11,
             pelvis_z=Z0 - 0.012, pelvis_bounce=0.005,
             pelvis_roll=D(2.0), pelvis_pitch=D(0.5),
-            foot_yaw_amp=sgn * D(4.0),
+            foot_yaw_amp=D(4.0),
             notes=f"Tab. 3 {side.capitalize()} Turn. Stance splay biased into "
                   f"the turn; pelvis yaw follows the path frame."))
 
